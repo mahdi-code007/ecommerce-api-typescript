@@ -21,7 +21,7 @@
 
 This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, MongoDB, Mongoose, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
 
-The current version provides category management with pagination, request validation, centralized error handling, duplicate detection, and automatic slug generation.
+The current version provides category and product management with pagination, category-based product filtering, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
 
 > [!NOTE]
 > This is an active learning project. Features are added progressively as I explore backend architecture and full-stack product development.
@@ -51,6 +51,12 @@ flowchart LR
 ## 🚀 Current capabilities
 
 - Category CRUD operations
+- Product creation, listing, updating, and deletion
+- Product filtering by category
+- Category relationship validation and populated product responses
+- Integer-based pricing in minor currency units
+- Product stock and active-status management
+- Protected category deletion when associated products exist
 - Request validation with Zod
 - Pagination with configurable page size
 - MongoDB persistence through Mongoose
@@ -148,6 +154,21 @@ Base path: `http://localhost:3000/api/v1`
 
 The list endpoint accepts optional `page` and `limit` query parameters. The maximum page size is `100`.
 
+A category that still has associated products cannot be deleted. The API returns `409 Conflict` until those products are removed or reassigned.
+
+### Products
+
+| Method | Endpoint | Description |
+| :---: | --- | --- |
+| `GET` | `/products` | List products with pagination and optional category filtering |
+| `POST` | `/products` | Create a product linked to an existing category |
+| `PATCH` | `/products/:id` | Update a product or move it to another category |
+| `DELETE` | `/products/:id` | Delete a product |
+
+Use the optional `categoryId` query parameter to filter the product list. Product prices are stored in `priceInMinorUnits` as integers—for example, `125075` represents `1250.75` in the selected currency.
+
+Product responses populate the related category's `name` and `slug`. Rating fields are controlled by the server and cannot be set directly through product creation or update requests.
+
 ## 🗂️ Project structure
 
 ```text
@@ -169,11 +190,14 @@ The list endpoint accepts optional `page` and `limit` query parameters. The maxi
 
 - [x] Project foundation and TypeScript setup
 - [x] Category management
+- [x] Product catalog foundation
+- [x] Product-to-category relationships and filtering
 - [x] Validation and centralized error handling
 - [ ] Authentication and authorization
 - [ ] User and address management
 - [ ] Brands and subcategories
-- [ ] Products, variants, inventory, and images
+- [ ] Product variants and advanced inventory
+- [ ] Product image upload and storage
 - [ ] Wishlist and shopping cart
 - [ ] Coupons and promotions
 - [ ] Orders and checkout flow
