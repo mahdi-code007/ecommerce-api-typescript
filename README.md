@@ -4,6 +4,18 @@ A RESTful ecommerce API built with Node.js, Express, TypeScript, MongoDB, Mongoo
 
 The current version provides category management with validation, pagination, centralized error handling, and automatic slug generation.
 
+## About this learning project
+
+I am a senior mobile application engineer specializing in native Android and Flutter development. I created this project to expand my backend and web development experience and grow into a full-stack engineer who can design and build complete products from end to end.
+
+Through this project, I am learning how to build a production-minded ecommerce platform, not just a standalone API. The long-term goal is to develop and connect three main parts:
+
+- A complete backend API for the ecommerce business logic and data
+- A customer-facing mobile application that I will build and integrate with the API
+- An admin dashboard for managing the store, products, categories, orders, and users
+
+The project is a work in progress and will evolve as I learn and implement more ecommerce features, architecture patterns, security practices, testing strategies, and deployment workflows.
+
 ## Tech stack
 
 - Node.js and Express 5
