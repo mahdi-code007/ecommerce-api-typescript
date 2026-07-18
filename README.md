@@ -1,59 +1,129 @@
-# Ecommerce API
+<div align="center">
 
-A RESTful ecommerce API built with Node.js, Express, TypeScript, MongoDB, Mongoose, and Zod.
+# 🛒 Ecommerce API
 
-The current version provides category management with validation, pagination, centralized error handling, and automatic slug generation.
+### A production-minded ecommerce backend built while expanding from mobile engineering into full-stack development
 
-## About this learning project
+[![Node.js](https://img.shields.io/badge/Node.js-20.19%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Express](https://img.shields.io/badge/Express-5-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
 
-I am a senior mobile application engineer specializing in native Android and Flutter development. I created this project to expand my backend and web development experience and grow into a full-stack engineer who can design and build complete products from end to end.
+[![Status](https://img.shields.io/badge/Status-In_Development-F59E0B?style=flat-square)](#-roadmap)
+[![Learning Project](https://img.shields.io/badge/Type-Learning_Project-8B5CF6?style=flat-square)](#-my-learning-journey)
+[![License](https://img.shields.io/badge/License-ISC-2563EB?style=flat-square)](./package.json)
 
-Through this project, I am learning how to build a production-minded ecommerce platform, not just a standalone API. The long-term goal is to develop and connect three main parts:
+</div>
 
-- A complete backend API for the ecommerce business logic and data
-- A customer-facing mobile application that I will build and integrate with the API
-- An admin dashboard for managing the store, products, categories, orders, and users
+---
 
-The project is a work in progress and will evolve as I learn and implement more ecommerce features, architecture patterns, security practices, testing strategies, and deployment workflows.
+## ✨ Overview
 
-## Tech stack
+This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, MongoDB, Mongoose, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
 
-- Node.js and Express 5
-- TypeScript
-- MongoDB and Mongoose
-- Zod request validation
-- Morgan request logging
+The current version provides category management with pagination, request validation, centralized error handling, duplicate detection, and automatic slug generation.
 
-## Requirements
+> [!NOTE]
+> This is an active learning project. Features are added progressively as I explore backend architecture and full-stack product development.
 
-- Node.js 20.19 or newer
-- MongoDB, either locally or through MongoDB Atlas
+## 🎯 My learning journey
 
-## Getting started
+I am a **senior mobile application engineer** specializing in **native Android** and **Flutter** development. I created this project to deepen my backend and web development experience and grow into a **full-stack engineer** capable of designing and delivering complete products from end to end.
 
-1. Install dependencies:
+My goal is not to build only a standalone API. I am learning how to design an entire ecommerce ecosystem and connect all of its parts:
+
+| Product | Purpose | Status |
+| --- | --- | :---: |
+| ⚙️ **Backend API** | Business logic, data, validation, security, and integrations | 🚧 In progress |
+| 📱 **Mobile application** | Customer-facing shopping experience built by me | 🗓️ Planned |
+| 🖥️ **Admin dashboard** | Store, product, category, order, and user management | 🗓️ Planned |
+
+## 🧩 Platform vision
+
+```mermaid
+flowchart LR
+    Mobile["📱 Mobile App<br/>Android & Flutter"] --> API["⚙️ Ecommerce API<br/>Node.js & Express"]
+    Dashboard["🖥️ Admin Dashboard"] --> API
+    API --> Database[("🍃 MongoDB")]
+    API --> Services["🔌 External Services<br/>Payments, Email & Storage"]
+```
+
+## 🚀 Current capabilities
+
+- Category CRUD operations
+- Request validation with Zod
+- Pagination with configurable page size
+- MongoDB persistence through Mongoose
+- Automatic category slug generation
+- Centralized operational error handling
+- Duplicate resource detection
+- Development request logging
+- TypeScript type safety
+- Ready-to-import Postman collection
+
+## 🛠️ Tech stack
+
+| Area | Technology |
+| --- | --- |
+| Runtime | Node.js |
+| API framework | Express 5 |
+| Language | TypeScript |
+| Database | MongoDB |
+| ODM | Mongoose |
+| Validation | Zod |
+| Logging | Morgan |
+| Development runner | TSX |
+
+## 🏁 Getting started
+
+### Prerequisites
+
+- Node.js `20.19` or newer
+- MongoDB locally or a MongoDB Atlas database
+
+### Installation
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/mahdi-code007/ecommerce-api-typescript.git
+   cd ecommerce-api-typescript
+   ```
+
+2. Install dependencies:
 
    ```bash
    npm install
    ```
 
-2. Copy the example environment file:
+3. Create your local environment file:
 
    ```bash
    cp .env.example config.env
    ```
 
-3. Update `DATABASE_URI` in `config.env` with your MongoDB connection string.
+4. Add your MongoDB connection string to `config.env`.
 
-4. Start the development server:
+5. Start the development server:
 
    ```bash
    npm run dev
    ```
 
-The API runs on `http://localhost:3000` by default.
+The API is available at `http://localhost:3000` by default.
 
-## Available scripts
+## ⚙️ Environment variables
+
+| Variable | Description | Example |
+| --- | --- | --- |
+| `PORT` | HTTP server port | `3000` |
+| `NODE_ENV` | Runtime environment | `development` |
+| `DATABASE_URI` | MongoDB connection string | `mongodb://127.0.0.1:27017/ecommerce` |
+
+> [!IMPORTANT]
+> Never commit `config.env` or any file containing real credentials. Use `.env.example` only as a safe configuration template.
+
+## 📜 Available scripts
 
 | Command | Description |
 | --- | --- |
@@ -62,28 +132,70 @@ The API runs on `http://localhost:3000` by default.
 | `npm run build` | Compile the project into `dist/` |
 | `npm start` | Run the compiled production build |
 
-## Category endpoints
+## 🔌 API reference
+
+Base path: `http://localhost:3000/api/v1`
+
+### Categories
 
 | Method | Endpoint | Description |
-| --- | --- | --- |
-| `GET` | `/api/v1/categories` | List categories with pagination |
-| `POST` | `/api/v1/categories` | Create a category |
-| `GET` | `/api/v1/categories/:id` | Get one category |
-| `PATCH` | `/api/v1/categories/:id` | Update a category |
-| `DELETE` | `/api/v1/categories/:id` | Delete a category |
+| :---: | --- | --- |
+| `GET` | `/categories` | List categories with pagination |
+| `POST` | `/categories` | Create a category |
+| `GET` | `/categories/:id` | Get a category by ID |
+| `PATCH` | `/categories/:id` | Update a category |
+| `DELETE` | `/categories/:id` | Delete a category |
 
-Pagination uses the optional `page` and `limit` query parameters. The maximum page size is 100.
+The list endpoint accepts optional `page` and `limit` query parameters. The maximum page size is `100`.
 
-## API collection
+## 🗂️ Project structure
 
-Import `postman/Ecommerce-API.postman_collection.json` into Postman to explore the API requests.
+```text
+.
+├── config/          # Database and application configuration
+├── controllers/     # Request handlers and business operations
+├── middlewares/     # Express middleware
+├── models/          # Mongoose data models
+├── postman/         # Postman API collection
+├── routes/          # API route definitions
+├── schemas/         # Zod validation schemas
+├── types/           # TypeScript declaration extensions
+├── utils/           # Shared utilities and error classes
+├── app.ts           # Express application setup
+└── server.ts        # Application entry point
+```
 
-## Environment variables
+## 🧭 Roadmap
 
-| Variable | Description | Example |
-| --- | --- | --- |
-| `PORT` | HTTP server port | `3000` |
-| `NODE_ENV` | Runtime environment | `development` |
-| `DATABASE_URI` | MongoDB connection string | `mongodb://127.0.0.1:27017/ecommerce` |
+- [x] Project foundation and TypeScript setup
+- [x] Category management
+- [x] Validation and centralized error handling
+- [ ] Authentication and authorization
+- [ ] User and address management
+- [ ] Brands and subcategories
+- [ ] Products, variants, inventory, and images
+- [ ] Wishlist and shopping cart
+- [ ] Coupons and promotions
+- [ ] Orders and checkout flow
+- [ ] Payment gateway integration
+- [ ] Reviews and ratings
+- [ ] File and image storage
+- [ ] Automated testing
+- [ ] API documentation
+- [ ] Deployment and continuous integration
+- [ ] Mobile application integration
+- [ ] Admin dashboard integration
 
-Never commit `config.env` or any file containing real credentials.
+## 🧪 Explore with Postman
+
+Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore and test the available requests.
+
+---
+
+<div align="center">
+
+### Built as part of my journey from senior mobile engineer to full-stack engineer
+
+**Native Android · Flutter · Backend · Full Stack**
+
+</div>
