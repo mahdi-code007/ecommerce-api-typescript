@@ -4,21 +4,15 @@ import type {
   Response,
 } from "express";
 import Category = require("../models/Category");
+import Product = require("../models/Product");
 import AppError = require("../utils/AppError");
+import getValidated = require("../utils/getValidated");
 import type {
   CategoryByIdRequest,
   CreateCategoryRequest,
   GetCategoriesRequest,
   UpdateCategoryRequest,
 } from "../schemas/categorySchema";
-
-const getValidated = <T>(req: Request): T => {
-  if (req.validated === undefined) {
-    throw new AppError("Validated request data is missing", 500);
-  }
-
-  return req.validated as T;
-};
 
 // @desc Create a new category
 // @route POST /api/v1/categories
@@ -140,6 +134,21 @@ export const deleteCategory = async (
   next: NextFunction,
 ): Promise<void> => {
   const { params } = getValidated<CategoryByIdRequest>(req);
+
+  const associatedProductExists = await Product.exists({
+    category: params.id,
+  });
+
+  if (associatedProductExists) {
+    next(
+      new AppError(
+        "Cannot delete a category that has associated products",
+        409,
+      ),
+    );
+    return;
+  }
+
   const category = await Category.findByIdAndDelete(params.id);
 
   if (!category) {

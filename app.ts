@@ -4,6 +4,7 @@ import express, {
 } from "express";
 import morgan from "morgan";
 import categoryRoutes = require("./routes/categoryRoutes");
+import productRoutes = require("./routes/productRoutes");
 import AppError = require("./utils/AppError");
 
 interface ApiError extends Error {
@@ -23,6 +24,7 @@ if (process.env.NODE_ENV === "development") {
 }
 
 app.use("/api/v1/categories", categoryRoutes);
+app.use("/api/v1/products", productRoutes);
 
 const notFoundHandler: RequestHandler = (req, _res, next) => {
   next(
