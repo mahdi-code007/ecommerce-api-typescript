@@ -15,6 +15,49 @@ import type {
 import AppError = require("../utils/AppError");
 import getValidated = require("../utils/getValidated");
 
+interface ProductCatalogFilter {
+  isActive: true;
+  name?: {
+    $regex: RegExp;
+  };
+  category?: mongoose.Types.ObjectId;
+  priceInMinorUnits?: {
+    $gte?: number;
+    $lte?: number;
+  };
+  stock?:
+    | 0
+    | {
+        $gt: number;
+      };
+}
+
+const productSortOptions = {
+  newest: {
+    createdAt: -1,
+    _id: -1,
+  },
+  price_asc: {
+    priceInMinorUnits: 1,
+    createdAt: -1,
+    _id: -1,
+  },
+  price_desc: {
+    priceInMinorUnits: -1,
+    createdAt: -1,
+    _id: -1,
+  },
+  rating_desc: {
+    ratingAverage: -1,
+    ratingsCount: -1,
+    createdAt: -1,
+    _id: -1,
+  },
+} as const;
+
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // @desc Create a new product
 // @route POST /api/v1/products
 // @access private
@@ -58,21 +101,54 @@ export const getAllProducts = async (
   res: Response,
 ): Promise<void> => {
   const { query } = getValidated<GetProductsRequest>(req);
-  const { page, limit, categoryId } = query;
+  const {
+    page,
+    limit,
+    categoryId,
+    search,
+    minPrice,
+    maxPrice,
+    inStock,
+    sort,
+  } = query;
   const skip = (page - 1) * limit;
 
-  const filter = categoryId
-    ? {
-        category: new mongoose.Types.ObjectId(categoryId),
-      }
-    : {};
+  const filter: ProductCatalogFilter = {
+    isActive: true,
+  };
+
+  if (search !== undefined) {
+    filter.name = {
+      $regex: new RegExp(escapeRegExp(search), "i"),
+    };
+  }
+
+  if (categoryId !== undefined) {
+    filter.category = new mongoose.Types.ObjectId(categoryId);
+  }
+
+  if (minPrice !== undefined || maxPrice !== undefined) {
+    filter.priceInMinorUnits = {};
+
+    if (minPrice !== undefined) {
+      filter.priceInMinorUnits.$gte = minPrice;
+    }
+
+    if (maxPrice !== undefined) {
+      filter.priceInMinorUnits.$lte = maxPrice;
+    }
+  }
+
+  if (inStock !== undefined) {
+    filter.stock = inStock ? { $gt: 0 } : 0;
+  }
 
   const total = await Product.countDocuments(filter);
   const totalPages = Math.ceil(total / limit) || 1;
 
   const products = await Product.find(filter)
     .populate("category", "name slug")
-    .sort({ createdAt: -1 })
+    .sort(productSortOptions[sort])
     .skip(skip)
     .limit(limit);
 

@@ -21,7 +21,7 @@
 
 This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, MongoDB, Mongoose, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
 
-The current version provides category and product management with pagination, category-based product filtering, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
+The current version provides category and product management, a public product catalog with search, filtering, sorting, and pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
 
 > [!NOTE]
 > This is an active learning project. Features are added progressively as I explore backend architecture and full-stack product development.
@@ -52,7 +52,9 @@ flowchart LR
 
 - Category CRUD operations
 - Product creation, listing, updating, and deletion
-- Product filtering by category
+- Active product catalog with case-insensitive name search
+- Product filtering by category, price range, and stock availability
+- Product sorting by recency, price, and rating
 - Category relationship validation and populated product responses
 - Integer-based pricing in minor currency units
 - Product stock and active-status management
@@ -160,12 +162,31 @@ A category that still has associated products cannot be deleted. The API returns
 
 | Method | Endpoint | Description |
 | :---: | --- | --- |
-| `GET` | `/products` | List products with pagination and optional category filtering |
+| `GET` | `/products` | Search, filter, sort, and paginate active products |
 | `POST` | `/products` | Create a product linked to an existing category |
 | `PATCH` | `/products/:id` | Update a product or move it to another category |
 | `DELETE` | `/products/:id` | Delete a product |
 
-Use the optional `categoryId` query parameter to filter the product list. Product prices are stored in `priceInMinorUnits` as integers—for example, `125075` represents `1250.75` in the selected currency.
+The public catalog returns products where `isActive` is `true` and supports these optional query parameters:
+
+| Parameter | Description |
+| --- | --- |
+| `search` | Case-insensitive partial match against the product name |
+| `categoryId` | Filter by category ID |
+| `minPrice` | Minimum `priceInMinorUnits` |
+| `maxPrice` | Maximum `priceInMinorUnits` |
+| `inStock` | Use `true` for products with stock or `false` for out-of-stock products |
+| `sort` | `newest`, `price_asc`, `price_desc`, or `rating_desc` |
+| `page` | Page number, starting from `1` |
+| `limit` | Page size from `1` to `100` |
+
+Example:
+
+```http
+GET /api/v1/products?search=phone&categoryId=507f1f77bcf86cd799439011&minPrice=100000&maxPrice=500000&inStock=true&sort=price_asc&page=1&limit=20
+```
+
+Product prices are stored in `priceInMinorUnits` as integers—for example, `125075` represents `1250.75` in the selected currency.
 
 Product responses populate the related category's `name` and `slug`. Rating fields are controlled by the server and cannot be set directly through product creation or update requests.
 
@@ -191,7 +212,8 @@ Product responses populate the related category's `name` and `slug`. Rating fiel
 - [x] Project foundation and TypeScript setup
 - [x] Category management
 - [x] Product catalog foundation
-- [x] Product-to-category relationships and filtering
+- [x] Product search, filtering, sorting, and pagination
+- [x] Product-to-category relationships
 - [x] Validation and centralized error handling
 - [ ] Authentication and authorization
 - [ ] User and address management

@@ -99,8 +99,26 @@ const productByIdRequestSchema = z.object({
   }),
 });
 
-const getProductsRequestSchema = z.object({
-  query: z.strictObject({
+const optionalPriceQuerySchema = (fieldName: string) =>
+  z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === ""
+        ? Number.NaN
+        : value,
+    z.coerce
+      .number({
+        error: `${fieldName} must be a number`,
+      })
+      .int({
+        error: `${fieldName} must be an integer`,
+      })
+      .min(0, {
+        error: `${fieldName} cannot be negative`,
+      }),
+  );
+
+const getProductsQuerySchema = z
+  .strictObject({
     page: z.coerce
       .number({
         error: "Page must be a number",
@@ -129,7 +147,57 @@ const getProductsRequestSchema = z.object({
       .default(10),
 
     categoryId: objectIdSchema.optional(),
-  }),
+
+    search: z
+      .string({
+        error: "Search must be a string",
+      })
+      .trim()
+      .min(1, {
+        error: "Search cannot be empty",
+      })
+      .max(100, {
+        error: "Search must be less than 100 characters long",
+      })
+      .optional(),
+
+    minPrice: optionalPriceQuerySchema("minPrice").optional(),
+    maxPrice: optionalPriceQuerySchema("maxPrice").optional(),
+
+    inStock: z
+      .enum(["true", "false"], {
+        error: "inStock must be true or false",
+      })
+      .transform((value) => value === "true")
+      .optional(),
+
+    sort: z
+      .enum(
+        [
+          "newest",
+          "price_asc",
+          "price_desc",
+          "rating_desc",
+        ],
+        {
+          error: "Invalid sort option",
+        },
+      )
+      .default("newest"),
+  })
+  .refine(
+    ({ minPrice, maxPrice }) =>
+      minPrice === undefined ||
+      maxPrice === undefined ||
+      minPrice <= maxPrice,
+    {
+      error: "minPrice must be less than or equal to maxPrice",
+      path: ["maxPrice"],
+    },
+  );
+
+const getProductsRequestSchema = z.object({
+  query: getProductsQuerySchema,
 });
 
 type CreateProductRequest = z.infer<
