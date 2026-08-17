@@ -29,6 +29,13 @@
       "when": 1786990737038,
       "tag": "0003_closed_grandmaster",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786992208560,
+      "tag": "0004_ancient_sphinx",
+      "breakpoints": true
     }
   ]
 }

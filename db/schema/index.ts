@@ -28,3 +28,9 @@ export {
   type CartItem,
   type NewCartItem,
 } from "./cartItems";
+
+export {
+  addresses,
+  type Address,
+  type NewAddress,
+} from "./addresses";

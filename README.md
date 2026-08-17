@@ -21,7 +21,7 @@
 
 This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, PostgreSQL, Drizzle, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
 
-The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, a logged-in shopping cart, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
+The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, a logged-in shopping cart, multiple shipping addresses with one default, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
 
 > [!NOTE]
 > This is an active learning project. Features are added progressively as I explore backend architecture and full-stack product development.
@@ -53,6 +53,7 @@ flowchart LR
 - JWT authentication with register, login, and current-user endpoints
 - Guest browsing of the public category and product catalog
 - Authenticated shopping cart with live product prices and a calculated subtotal
+- Authenticated shipping addresses with one default per user
 - Admin-only category and product create, update, and delete
 - Password hashing with bcrypt
 - Role-based authorization (`user` and `admin`)
@@ -161,7 +162,7 @@ The API is available at `http://localhost:3000` by default.
 
 Base path: `http://localhost:3000/api/v1`
 
-Catalog **reads** are public so guests can browse without an account. Catalog **writes** require an admin JWT. Cart requests require any logged-in user JWT:
+Catalog **reads** are public so guests can browse without an account. Catalog **writes** require an admin JWT. Cart and address requests require any logged-in user JWT:
 
 ```http
 Authorization: Bearer <access_token>
@@ -253,6 +254,39 @@ Add and update bodies use:
 
 Cart prices are read live from `products`. Item totals and `subtotal` use `priceInMinorUnits`. Missing or inactive products return `404`. Quantity greater than stock returns `400`. An item that does not belong to the current user's cart returns `404`.
 
+### Addresses
+
+A regular user token is enough. A user may save up to 10 shipping addresses. Exactly one of them is `default`. The first address becomes default automatically. `country` is stored as `SA` and is not sent by the client.
+
+| Method | Endpoint | Access | Description |
+| :---: | --- | --- | --- |
+| `GET` | `/addresses` | Authenticated | List the current user's addresses, default first |
+| `POST` | `/addresses` | Authenticated | Create an address |
+| `GET` | `/addresses/:addressId` | Authenticated | Get one address |
+| `PATCH` | `/addresses/:addressId` | Authenticated | Update an address |
+| `DELETE` | `/addresses/:addressId` | Authenticated | Delete an address |
+| `PATCH` | `/addresses/:addressId/default` | Authenticated | Make this address the default |
+
+Create body example:
+
+```json
+{
+  "label": "Home",
+  "fullName": "Mahdi Abd El-Mageed",
+  "phone": "0501234567",
+  "city": "Riyadh",
+  "district": "Al Olaya",
+  "street": "King Fahd Road",
+  "building": "12",
+  "notes": "Gate 2",
+  "isDefault": true
+}
+```
+
+`fullName`, `phone`, `city`, `district`, and `street` are required on create. `label`, `building`, `notes`, and `isDefault` are optional. Phone must be a Saudi number: `05XXXXXXXX` or `+9665XXXXXXXX`. `PATCH` accepts the same fields partially and rejects an empty body.
+
+An address that does not belong to the current user returns `404`. Deleting the default promotes the oldest remaining address. These addresses are for a later checkout flow; placing an order is not implemented yet.
+
 ## 🗂️ Project structure
 
 The API is organized by **layer**, not by feature. Each request walks the same path: route → middleware → controller → repository → PostgreSQL.
@@ -291,6 +325,7 @@ mindmap
       Categories
       Products
       Cart
+      Addresses
     HTTP
       routes
       protect
@@ -358,11 +393,12 @@ sequenceDiagram
 
 ### Data relationships
 
-One user has one cart. Cart items point at products. Product prices are read live; they are not stored on the cart item. Stock is checked on add, and decreased later at order time.
+One user has one cart and many shipping addresses. Cart items point at products. Product prices are read live; they are not stored on the cart item. Stock is checked on add, and decreased later at order time. One address per user is `default`.
 
 ```mermaid
 erDiagram
   USERS ||--o| CARTS : "one cart"
+  USERS ||--o{ ADDRESSES : "up to 10"
   CARTS ||--o{ CART_ITEMS : contains
   PRODUCTS ||--o{ CART_ITEMS : "live price"
   CATEGORIES ||--o{ PRODUCTS : groups
@@ -380,6 +416,12 @@ erDiagram
     uuid cart_id FK
     uuid product_id FK
     int quantity
+  }
+  ADDRESSES {
+    uuid id PK
+    uuid user_id FK
+    string phone
+    boolean isDefault
   }
   PRODUCTS {
     uuid id PK
@@ -401,13 +443,16 @@ flowchart LR
   Guest["Guest"] --> Public["Public reads"]
   User["Logged-in user"] --> Public
   User --> CartAPI["Cart APIs"]
+  User --> AddressAPI["Address APIs"]
   User --> Me["GET /auth/me"]
   Admin["Admin"] --> Public
   Admin --> CartAPI
+  Admin --> AddressAPI
   Admin --> Writes["Category and product writes"]
 
   Public --> Catalog["GET /categories<br/>GET /products"]
   CartAPI --> CartTables["carts + cart_items"]
+  AddressAPI --> AddressTable["addresses"]
   Writes --> CatalogTables["categories + products"]
 ```
 
@@ -423,7 +468,8 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 - [x] Validation and centralized error handling
 - [x] Authentication and authorization
 - [x] Shopping cart
-- [ ] User and address management
+- [x] Shipping addresses
+- [ ] User profile management
 - [ ] Brands and subcategories
 - [ ] Product variants and advanced inventory
 - [ ] Product image upload and storage
@@ -441,7 +487,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 
 ## 🧪 Explore with Postman
 
-Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, and Cart requests. Cart examples use `{{token}}` from `Login`; a regular user token is enough.
+Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, Cart, and Addresses requests. Cart and address examples use `{{token}}` from `Login`; a regular user token is enough.
 
 ---
 

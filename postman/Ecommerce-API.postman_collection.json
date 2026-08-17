@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Ecommerce API v1",
-    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart requests need the same `{{token}}`. A regular user token is enough; admin is not required.\n7. Try deleting a category before deleting its product to see a `409 Conflict` response.\n8. Delete the product, then delete the category.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me` and all cart requests.\n- Admin: category and product create, update, and delete.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Write and cart requests send `Authorization: Bearer {{token}}`.\n- `slug`, `ratingAverage`, and `ratingsCount` are server-owned and are not accepted on create or update.\n- Price is sent as `priceInMinorUnits` — an integer in the smallest currency unit.\n- Adding to the cart does not decrease stock. Stock is checked only so quantity cannot exceed what is available.",
+    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart and address requests need the same `{{token}}`. A regular user token is enough; admin is not required.\n7. Try deleting a category before deleting its product to see a `409 Conflict` response.\n8. Delete the product, then delete the category.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me`, all cart requests, and all address requests.\n- Admin: category and product create, update, and delete.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Write, cart, and address requests send `Authorization: Bearer {{token}}`.\n- `slug`, `ratingAverage`, and `ratingsCount` are server-owned and are not accepted on create or update.\n- Price is sent as `priceInMinorUnits` — an integer in the smallest currency unit.\n- Adding to the cart does not decrease stock. Stock is checked only so quantity cannot exceed what is available.\n- Phone numbers must be Saudi: `05XXXXXXXX` or `+9665XXXXXXXX`.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -47,6 +47,12 @@
       "value": "",
       "type": "string",
       "description": "Saved automatically after a successful add or update cart item request."
+    },
+    {
+      "key": "addressId",
+      "value": "",
+      "type": "string",
+      "description": "Saved automatically after a successful create or update address request."
     }
   ],
   "item": [
@@ -819,6 +825,188 @@
       ]
     },
     {
+      "name": "Addresses",
+      "description": "Logged-in user only. A regular user token is enough. First address becomes default. Maximum 10 addresses per user.",
+      "item": [
+        {
+          "name": "Get Addresses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/addresses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "addresses"]
+            },
+            "description": "Lists the current user's shipping addresses. The default address is first.\n\n- Missing or invalid token: `401`."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Address",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data?.address?.id) {",
+                  "  pm.collectionVariables.set('addressId', json.data.address.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Home\",\n  \"fullName\": \"Postman User\",\n  \"phone\": \"0501234567\",\n  \"city\": \"Riyadh\",\n  \"district\": \"Al Olaya\",\n  \"street\": \"King Fahd Road\",\n  \"building\": \"12\",\n  \"notes\": \"Gate 2\",\n  \"isDefault\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/addresses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "addresses"]
+            },
+            "description": "Creates a shipping address and saves `id` to `addressId`.\n\nThe first address becomes default even if `isDefault` is omitted.\n\nPhone must be Saudi: `05XXXXXXXX` or `+9665XXXXXXXX`.\n`country` is stored as `SA` and should not be sent.\nMaximum 10 addresses per user."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Address By Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/addresses/{{addressId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "addresses", "{{addressId}}"]
+            },
+            "description": "Returns one address owned by the current user.\n\n- Invalid ID: `400`.\n- Address not in this user's list: `404`."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Address",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data?.address?.id) {",
+                  "  pm.collectionVariables.set('addressId', json.data.address.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"city\": \"Jeddah\",\n  \"district\": \"Al Balad\",\n  \"notes\": \"Updated from Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/addresses/{{addressId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "addresses", "{{addressId}}"]
+            },
+            "description": "Partially updates an address. Empty body returns `400` with `No fields to update`."
+          },
+          "response": []
+        },
+        {
+          "name": "Set Default Address",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/addresses/{{addressId}}/default",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "addresses", "{{addressId}}", "default"]
+            },
+            "description": "Makes this address the default and unsets the previous default."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Address",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/addresses/{{addressId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "addresses", "{{addressId}}"]
+            },
+            "description": "Deletes an address. If it was the default, the oldest remaining address becomes default."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Validation Examples",
       "description": "Invalid requests to exercise Zod error messages, auth rules, and business rules.",
       "item": [
@@ -1119,6 +1307,52 @@
               "path": ["api", "v1", "cart", "items"]
             },
             "description": "Example `400 Bad Request`. Expected message: `Requested quantity exceeds available stock`.\n\nRequires a logged-in token and an existing `productId`. Adding to the cart still does not decrease stock."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Addresses Without Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/addresses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "addresses"]
+            },
+            "description": "Example `401 Unauthorized`. Expected message: `You are not logged in`."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Address Invalid Phone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Postman User\",\n  \"phone\": \"12345\",\n  \"city\": \"Riyadh\",\n  \"district\": \"Al Olaya\",\n  \"street\": \"King Fahd Road\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/addresses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "addresses"]
+            },
+            "description": "Example `400 Bad Request`. Expected message: `Phone must be a Saudi number such as 05XXXXXXXX or +9665XXXXXXXX`."
           },
           "response": []
         }
