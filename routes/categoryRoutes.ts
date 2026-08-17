@@ -1,5 +1,6 @@
 import { Router } from "express";
 import * as categoryController from "../controllers/categoryController";
+import { protect, restrictTo } from "../middlewares/auth";
 import validate = require("../middlewares/validate");
 import {
   categoryByIdRequestSchema,
@@ -17,6 +18,8 @@ router
     categoryController.getAllCategories,
   )
   .post(
+    protect,
+    restrictTo("admin"),
     validate(createCategoryRequestSchema),
     categoryController.createCategory,
   );
@@ -28,10 +31,14 @@ router
     categoryController.getCategory,
   )
   .patch(
+    protect,
+    restrictTo("admin"),
     validate(updateCategoryRequestSchema),
     categoryController.updateCategory,
   )
   .delete(
+    protect,
+    restrictTo("admin"),
     validate(categoryByIdRequestSchema),
     categoryController.deleteCategory,
   );

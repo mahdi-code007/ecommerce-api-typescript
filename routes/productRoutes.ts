@@ -5,6 +5,7 @@ import {
   getAllProducts,
   updateProduct,
 } from "../controllers/productController";
+import { protect, restrictTo } from "../middlewares/auth";
 import validate = require("../middlewares/validate");
 import {
   createProductRequestSchema,
@@ -22,6 +23,8 @@ router
     getAllProducts,
   )
   .post(
+    protect,
+    restrictTo("admin"),
     validate(createProductRequestSchema),
     createProduct,
   );
@@ -29,10 +32,14 @@ router
 router
   .route("/:id")
   .patch(
+    protect,
+    restrictTo("admin"),
     validate(updateProductRequestSchema),
     updateProduct,
   )
   .delete(
+    protect,
+    restrictTo("admin"),
     validate(productByIdRequestSchema),
     deleteProduct,
   );
