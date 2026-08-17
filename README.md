@@ -255,21 +255,163 @@ Cart prices are read live from `products`. Item totals and `subtotal` use `price
 
 ## 🗂️ Project structure
 
+The API is organized by **layer**, not by feature. Each request walks the same path: route → middleware → controller → repository → PostgreSQL.
+
 ```text
 .
 ├── config/          # Database and application configuration
-├── controllers/     # Request handlers and business operations
-├── db/              # Drizzle schema and repositories
+├── controllers/     # HTTP decisions: status codes and response shape
+├── db/
+│   ├── schema/      # Drizzle table definitions
+│   └── repositories/# SQL only — no 401/403 decisions
 ├── drizzle/         # Generated SQL migrations
-├── middlewares/     # Express middleware
+├── middlewares/     # Auth, roles, and Zod validation
 ├── postman/         # Postman API collection
-├── routes/          # API route definitions
-├── schemas/         # Zod validation schemas
+├── routes/          # URL → middleware → controller wiring
+├── schemas/         # Zod request contracts
 ├── types/           # TypeScript declaration extensions
-├── utils/           # Shared utilities and error classes
-├── app.ts           # Express application setup
-└── server.ts        # Application entry point
+├── utils/           # JWT, password hashing, AppError
+├── app.ts           # Express app, mounts, global error handler
+└── server.ts        # Loads config.env, connects DB, listens
 ```
+
+## 🧠 Architecture map
+
+### Layers and features
+
+```mermaid
+mindmap
+  root((Ecommerce API))
+    Entry
+      server.ts
+      app.ts
+      config.env
+    Features
+      Auth
+      Categories
+      Products
+      Cart
+    HTTP
+      routes
+      protect
+      restrictTo
+      Zod schemas
+      controllers
+    Data
+      repositories
+      Drizzle schema
+      PostgreSQL
+    Shared
+      JWT
+      bcrypt
+      AppError
+```
+
+### How a request moves
+
+`server.ts` boots the process. `app.ts` mounts `/api/v1/*` and the global error handler. Controllers never write SQL. Repositories never return `401`.
+
+```mermaid
+flowchart TB
+  Client["Client / Postman / Flutter"] --> Server["server.ts"]
+  Server --> App["app.ts"]
+  App --> Routes["routes/"]
+  Routes --> AuthMW["protect / restrictTo"]
+  AuthMW --> Zod["validate + schemas/"]
+  Zod --> Controller["controllers/"]
+  Controller --> Repo["db/repositories/"]
+  Repo --> Schema["db/schema/"]
+  Schema --> PG[("PostgreSQL")]
+  Controller --> JSON["JSON response"]
+  AuthMW -.->|"401 / 403"| Errors["AppError"]
+  Zod -.->|"400"| Errors
+  Controller -.->|"404 / 409"| Errors
+  Repo -.->|"DB constraint"| Errors
+  Errors --> Handler["global error handler"]
+  Handler --> JSON
+```
+
+Example: add a product to the cart.
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Routes as cartRoutes
+  participant Protect as protect
+  participant Zod as validate
+  participant Ctrl as cartController
+  participant Repo as cartRepository
+  participant DB as PostgreSQL
+
+  Client->>Routes: POST /api/v1/cart/items
+  Routes->>Protect: Authorization Bearer JWT
+  Protect->>DB: load user by token.sub
+  Protect-->>Routes: req.user
+  Routes->>Zod: body productId + quantity
+  Zod-->>Ctrl: req.validated
+  Ctrl->>Repo: find product, get or create cart
+  Repo->>DB: SELECT / INSERT
+  Ctrl->>Repo: insert or increment item
+  Repo->>DB: write cart_items
+  Ctrl-->>Client: 201 cart + live subtotal
+```
+
+### Data relationships
+
+One user has one cart. Cart items point at products. Product prices are read live; they are not stored on the cart item. Stock is checked on add, and decreased later at order time.
+
+```mermaid
+erDiagram
+  USERS ||--o| CARTS : "one cart"
+  CARTS ||--o{ CART_ITEMS : contains
+  PRODUCTS ||--o{ CART_ITEMS : "live price"
+  CATEGORIES ||--o{ PRODUCTS : groups
+  USERS {
+    uuid id PK
+    string email
+    string role
+  }
+  CARTS {
+    uuid id PK
+    uuid user_id UK
+  }
+  CART_ITEMS {
+    uuid id PK
+    uuid cart_id FK
+    uuid product_id FK
+    int quantity
+  }
+  PRODUCTS {
+    uuid id PK
+    int priceInMinorUnits
+    int stock
+    boolean isActive
+  }
+  CATEGORIES {
+    uuid id PK
+    string name
+    string slug
+  }
+```
+
+### Who can call what
+
+```mermaid
+flowchart LR
+  Guest["Guest"] --> Public["Public reads"]
+  User["Logged-in user"] --> Public
+  User --> CartAPI["Cart APIs"]
+  User --> Me["GET /auth/me"]
+  Admin["Admin"] --> Public
+  Admin --> CartAPI
+  Admin --> Writes["Category and product writes"]
+
+  Public --> Catalog["GET /categories<br/>GET /products"]
+  CartAPI --> CartTables["carts + cart_items"]
+  Writes --> CatalogTables["categories + products"]
+```
+
+Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositories`, `Model` ≈ Drizzle schema + Zod, `core` interceptors ≈ `protect` and `validate`.
 
 ## 🧭 Roadmap
 
