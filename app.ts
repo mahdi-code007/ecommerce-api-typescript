@@ -5,6 +5,7 @@ import express, {
 import morgan from "morgan";
 import categoryRoutes = require("./routes/categoryRoutes");
 import productRoutes = require("./routes/productRoutes");
+import authRoutes = require("./routes/authRoutes");
 import AppError = require("./utils/AppError");
 
 interface ApiError extends Error {
@@ -51,6 +52,7 @@ if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
+app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/categories", categoryRoutes);
 app.use("/api/v1/products", productRoutes);
 
@@ -90,8 +92,12 @@ const globalErrorHandler: ErrorRequestHandler = (
     const duplicatedField =
       getDuplicatedFieldFromPostgresDetail(postgresError.detail);
 
-    message = duplicatedField
-      ? `${duplicatedField} already exists`
+    const fieldName = duplicatedField?.includes("email")
+      ? "email"
+      : duplicatedField;
+
+    message = fieldName
+      ? `${fieldName} already exists`
       : "Resource already exists";
   }
 

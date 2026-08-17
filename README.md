@@ -21,7 +21,7 @@
 
 This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, PostgreSQL, Drizzle, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
 
-The current version provides category and product management, a public product catalog with search, filtering, sorting, and pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
+The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
 
 > [!NOTE]
 > This is an active learning project. Features are added progressively as I explore backend architecture and full-stack product development.
@@ -50,6 +50,11 @@ flowchart LR
 
 ## 🚀 Current capabilities
 
+- JWT authentication with register, login, and current-user endpoints
+- Guest browsing of the public category and product catalog
+- Admin-only category and product create, update, and delete
+- Password hashing with bcrypt
+- Role-based authorization (`user` and `admin`)
 - Category CRUD operations
 - Product creation, listing, updating, and deletion
 - Active product catalog with case-insensitive name search
@@ -79,6 +84,7 @@ flowchart LR
 | Database | PostgreSQL |
 | ORM | Drizzle |
 | Validation | Zod |
+| Auth | JWT + bcrypt |
 | Logging | Morgan |
 | Development runner | TSX |
 
@@ -110,7 +116,7 @@ flowchart LR
    cp .env.example config.env
    ```
 
-4. Add your PostgreSQL connection string to `config.env`.
+4. Add your PostgreSQL connection string and a long random `JWT_SECRET` to `config.env`.
 5. Apply database migrations:
 
    ```bash
@@ -132,6 +138,8 @@ The API is available at `http://localhost:3000` by default.
 | `PORT` | HTTP server port | `3000` |
 | `NODE_ENV` | Runtime environment | `development` |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://ecommerce_user:YOUR_PASSWORD@localhost:5432/ecommerce_db` |
+| `JWT_SECRET` | Secret used to sign access tokens | a long random string |
+| `JWT_EXPIRES_IN` | Access token lifetime | `7d` |
 
 > [!IMPORTANT]
 > Never commit `config.env` or any file containing real credentials. Use `.env.example` only as a safe configuration template.
@@ -152,15 +160,39 @@ The API is available at `http://localhost:3000` by default.
 
 Base path: `http://localhost:3000/api/v1`
 
+Catalog **reads** are public so guests can browse without an account. Catalog **writes** require an admin JWT:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+New accounts are created with `role: user`. To promote an admin locally:
+
+```sql
+UPDATE users
+SET role = 'admin'
+WHERE email = 'you@example.com';
+```
+
+Log in again after that update so the new token includes `role: admin`.
+
+### Auth
+
+| Method | Endpoint | Access | Description |
+| :---: | --- | --- | --- |
+| `POST` | `/auth/register` | Public | Create a customer account |
+| `POST` | `/auth/login` | Public | Sign in and receive a JWT |
+| `GET` | `/auth/me` | Authenticated | Return the current user |
+
 ### Categories
 
-| Method | Endpoint | Description |
-| :---: | --- | --- |
-| `GET` | `/categories` | List categories with pagination |
-| `POST` | `/categories` | Create a category |
-| `GET` | `/categories/:id` | Get a category by ID |
-| `PATCH` | `/categories/:id` | Update a category |
-| `DELETE` | `/categories/:id` | Delete a category |
+| Method | Endpoint | Access | Description |
+| :---: | --- | --- | --- |
+| `GET` | `/categories` | Public | List categories with pagination |
+| `POST` | `/categories` | Admin | Create a category |
+| `GET` | `/categories/:id` | Public | Get a category by ID |
+| `PATCH` | `/categories/:id` | Admin | Update a category |
+| `DELETE` | `/categories/:id` | Admin | Delete a category |
 
 The list endpoint accepts optional `page` and `limit` query parameters. The maximum page size is `100`.
 
@@ -168,12 +200,12 @@ A category that still has associated products cannot be deleted. The API returns
 
 ### Products
 
-| Method | Endpoint | Description |
-| :---: | --- | --- |
-| `GET` | `/products` | Search, filter, sort, and paginate active products |
-| `POST` | `/products` | Create a product linked to an existing category |
-| `PATCH` | `/products/:id` | Update a product or move it to another category |
-| `DELETE` | `/products/:id` | Delete a product |
+| Method | Endpoint | Access | Description |
+| :---: | --- | --- | --- |
+| `GET` | `/products` | Public | Search, filter, sort, and paginate active products |
+| `POST` | `/products` | Admin | Create a product linked to an existing category |
+| `PATCH` | `/products/:id` | Admin | Update a product or move it to another category |
+| `DELETE` | `/products/:id` | Admin | Delete a product |
 
 The public catalog returns products where `isActive` is `true` and supports these optional query parameters:
 
@@ -224,7 +256,7 @@ Product responses populate the related category's `name` and `slug`. Rating fiel
 - [x] Product search, filtering, sorting, and pagination
 - [x] Product-to-category relationships
 - [x] Validation and centralized error handling
-- [ ] Authentication and authorization
+- [x] Authentication and authorization
 - [ ] User and address management
 - [ ] Brands and subcategories
 - [ ] Product variants and advanced inventory

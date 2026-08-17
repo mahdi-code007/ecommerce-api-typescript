@@ -9,3 +9,10 @@ export {
   type Product,
   type NewProduct,
 } from "./products";
+
+export {
+  userRoleEnum,
+  users,
+  type User,
+  type NewUser,
+} from "./users";
