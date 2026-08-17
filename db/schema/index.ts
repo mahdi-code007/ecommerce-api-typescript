@@ -16,3 +16,15 @@ export {
   type User,
   type NewUser,
 } from "./users";
+
+export {
+  carts,
+  type Cart,
+  type NewCart,
+} from "./carts";
+
+export {
+  cartItems,
+  type CartItem,
+  type NewCartItem,
+} from "./cartItems";

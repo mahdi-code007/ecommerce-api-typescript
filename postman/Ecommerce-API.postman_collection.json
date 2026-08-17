@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Ecommerce API v1",
-    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Create Category` first; the ID will be saved to `categoryId`.\n3. Run `Create Product`; the ID will be saved to `productId`.\n4. Try read, update, and filter requests.\n5. Try deleting a category before deleting its product to see a `409 Conflict` response.\n6. Delete the product, then delete the category.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- `slug`, `ratingAverage`, and `ratingsCount` are server-owned and are not accepted on create or update.\n- Price is sent as `priceInMinorUnits` — an integer in the smallest currency unit.",
+    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart requests need the same `{{token}}`. A regular user token is enough; admin is not required.\n7. Try deleting a category before deleting its product to see a `409 Conflict` response.\n8. Delete the product, then delete the category.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me` and all cart requests.\n- Admin: category and product create, update, and delete.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Write and cart requests send `Authorization: Bearer {{token}}`.\n- `slug`, `ratingAverage`, and `ratingsCount` are server-owned and are not accepted on create or update.\n- Price is sent as `priceInMinorUnits` — an integer in the smallest currency unit.\n- Adding to the cart does not decrease stock. Stock is checked only so quantity cannot exceed what is available.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -11,6 +11,24 @@
       "value": "http://localhost:8000",
       "type": "string",
       "description": "Base URL for the local server."
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string",
+      "description": "Saved automatically after a successful `Login` request."
+    },
+    {
+      "key": "userEmail",
+      "value": "",
+      "type": "string",
+      "description": "Saved automatically after a successful `Register User` request."
+    },
+    {
+      "key": "userPassword",
+      "value": "Secret123!",
+      "type": "string",
+      "description": "Password used by the Auth requests in this collection."
     },
     {
       "key": "categoryId",
@@ -23,12 +41,140 @@
       "value": "",
       "type": "string",
       "description": "Saved automatically after a successful `Create Product` request."
+    },
+    {
+      "key": "cartItemId",
+      "value": "",
+      "type": "string",
+      "description": "Saved automatically after a successful add or update cart item request."
     }
   ],
   "item": [
     {
+      "name": "Auth",
+      "description": "Register and login. Catalog writes need an admin token. New accounts start as `user`.",
+      "item": [
+        {
+          "name": "Register User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data?.user?.email) {",
+                  "  pm.collectionVariables.set('userEmail', json.data.user.email);",
+                  "}",
+                  "",
+                  "pm.test('Password hash is not returned', function () {",
+                  "  pm.expect(json.data.user.passwordHash).to.be.undefined;",
+                  "  pm.expect(json.data.user.password).to.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman User\",\n  \"email\": \"postman.{{$timestamp}}@example.com\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Creates a `user` account and saves `email` to `userEmail`.\n\nThe response never includes `password` or `passwordHash`.\n\nTo use catalog write requests, promote the user in PostgreSQL then run `Login`:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<registered email>';\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data?.token) {",
+                  "  pm.collectionVariables.set('token', json.data.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Signs in and saves the JWT to `token`.\n\nIf you promoted the user to `admin`, log in again so the token includes the new role.\n\nWrong email or password returns `401` with `Invalid email or password`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "me"]
+            },
+            "description": "Returns the current user from the access token.\n\n- Missing or invalid token: `401`.\n- The response never includes `passwordHash`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Categories",
-      "description": "Manage categories. Associated products must be deleted before deleting a category.",
+      "description": "GET requests are public for guest browsing. Create, update, and delete require an admin JWT.",
       "item": [
         {
           "name": "Create Category",
@@ -56,6 +202,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
               }
             ],
             "body": {
@@ -72,7 +222,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "categories"]
             },
-            "description": "Creates a category and saves `id` to `categoryId`.\n\n### Fields\n- `name`: required, 3–50 characters, trimmed.\n- `description`: optional, max 500 characters.\n- `image`: optional, image URL as a string.\n- `slug`: do not send; generated by the server from `name`.\n\nUsing `{{$timestamp}}` avoids duplicate names when re-running the request."
+            "description": "Admin only. Creates a category and saves `id` to `categoryId`.\n\n### Fields\n- `name`: required, 3–50 characters, trimmed.\n- `description`: optional, max 500 characters.\n- `image`: optional, image URL as a string.\n- `slug`: do not send; generated by the server from `name`.\n\nUsing `{{$timestamp}}` avoids duplicate names when re-running the request.\n\n- No token: `401`.\n- Logged-in `user`: `403`."
           },
           "response": []
         },
@@ -98,7 +248,7 @@
                 }
               ]
             },
-            "description": "Lists categories with `pagination`.\n\n### `pagination` fields\n- `total`: total number of categories.\n- `totalPages`: total number of pages.\n- `page`: current page.\n- `limit`: page size."
+            "description": "Public. Lists categories with `pagination` so guests can browse without logging in.\n\n### `pagination` fields\n- `total`: total number of categories.\n- `totalPages`: total number of pages.\n- `page`: current page.\n- `limit`: page size."
           },
           "response": []
         },
@@ -112,7 +262,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "categories", "{{categoryId}}"]
             },
-            "description": "Returns a single category by `categoryId`.\n\n- Invalid ID: `400`.\n- Valid ID not found: `404`."
+            "description": "Public. Returns a single category by `categoryId`.\n\n- Invalid ID: `400`.\n- Valid ID not found: `404`."
           },
           "response": []
         },
@@ -124,6 +274,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
               }
             ],
             "body": {
@@ -140,7 +294,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "categories", "{{categoryId}}"]
             },
-            "description": "Updates only the fields sent in the body.\n\n### Allowed fields\n- `name`\n- `description`\n- `image`\n\nAt least one field is required. Changing `name` updates `slug` automatically."
+            "description": "Admin only. Updates only the fields sent in the body.\n\n### Allowed fields\n- `name`\n- `description`\n- `image`\n\nAt least one field is required. Changing `name` updates `slug` automatically."
           },
           "response": []
         },
@@ -148,13 +302,18 @@
           "name": "Delete Category",
           "request": {
             "method": "DELETE",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/categories/{{categoryId}}",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "categories", "{{categoryId}}"]
             },
-            "description": "Deletes the category if it has no associated products.\n\nIf products are linked, returns `409 Conflict` with:\n\n```json\n{\n  \"status\": \"fail\",\n  \"message\": \"Cannot delete a category that has associated products\"\n}\n```"
+            "description": "Admin only. Deletes the category if it has no associated products.\n\nIf products are linked, returns `409 Conflict` with:\n\n```json\n{\n  \"status\": \"fail\",\n  \"message\": \"Cannot delete a category that has associated products\"\n}\n```"
           },
           "response": []
         }
@@ -162,7 +321,7 @@
     },
     {
       "name": "Products",
-      "description": "Manage products and their category relationships. Run `Create Category` before creating a product.",
+      "description": "GET requests are public for guest browsing. Create, update, and delete require an admin JWT. Run `Create Category` before creating a product.",
       "item": [
         {
           "name": "Create Product",
@@ -195,6 +354,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
               }
             ],
             "body": {
@@ -211,7 +374,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "products"]
             },
-            "description": "Creates a product and saves `id` to `productId`.\n\n### Fields\n- `name`: required, 3–100 characters.\n- `description`: optional, max 2000 characters.\n- `priceInMinorUnits`: required, integer greater than zero. Example: `125075` means `1250.75` in the currency.\n- `stock`: required, integer starting from zero.\n- `categoryId`: required, ID of an existing category.\n- `image`: optional.\n- `isActive`: optional, default `true`.\n\n### Server-owned fields\n- `slug`\n- `ratingAverage`: starts at zero.\n- `ratingsCount`: starts at zero."
+            "description": "Admin only. Creates a product and saves `id` to `productId`.\n\n### Fields\n- `name`: required, 3–100 characters.\n- `description`: optional, max 2000 characters.\n- `priceInMinorUnits`: required, integer greater than zero. Example: `125075` means `1250.75` in the currency.\n- `stock`: required, integer starting from zero.\n- `categoryId`: required, ID of an existing category.\n- `image`: optional.\n- `isActive`: optional, default `true`.\n\n### Server-owned fields\n- `slug`\n- `ratingAverage`: starts at zero.\n- `ratingsCount`: starts at zero."
           },
           "response": []
         },
@@ -242,7 +405,7 @@
                 }
               ]
             },
-            "description": "Lists active products only, newest first, with `pagination`. Returns `category` populated with `name` and `slug`."
+            "description": "Public. Lists active products only, newest first, with `pagination`. Returns `category` populated with `name` and `slug`. No token required."
           },
           "response": []
         },
@@ -271,7 +434,7 @@
                 }
               ]
             },
-            "description": "Lists only products for the given `categoryId`, with `pagination`."
+            "description": "Public. Lists only products for the given `categoryId`, with `pagination`."
           },
           "response": []
         },
@@ -300,7 +463,7 @@
                 }
               ]
             },
-            "description": "Searches active products whose `name` contains `phone`. Regex metacharacters are escaped by the server."
+            "description": "Public. Searches active products whose `name` contains `phone`."
           },
           "response": []
         },
@@ -339,7 +502,7 @@
                 }
               ]
             },
-            "description": "Filters active products by an inclusive price range and stock availability."
+            "description": "Public. Filters active products by an inclusive price range and stock availability."
           },
           "response": []
         },
@@ -368,7 +531,7 @@
                 }
               ]
             },
-            "description": "Sorts active products from the lowest price to the highest price."
+            "description": "Public. Sorts active products from the lowest price to the highest price."
           },
           "response": []
         },
@@ -416,7 +579,7 @@
                 }
               ]
             },
-            "description": "Combines name search, category, inclusive price range, stock availability, sorting, and pagination in one request."
+            "description": "Public. Combines name search, category, inclusive price range, stock availability, sorting, and pagination in one request."
           },
           "response": []
         },
@@ -428,6 +591,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
               }
             ],
             "body": {
@@ -444,7 +611,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "products", "{{productId}}"]
             },
-            "description": "Updates only the fields sent in the body.\n\n### Allowed fields\n- `name`\n- `description`\n- `priceInMinorUnits`\n- `stock`\n- `categoryId`\n- `image`\n- `isActive`\n\n`slug`, `ratingAverage`, and `ratingsCount` cannot be updated directly. Changing `name` updates `slug`. Changing `categoryId` verifies the new category exists."
+            "description": "Admin only. Updates only the fields sent in the body.\n\n### Allowed fields\n- `name`\n- `description`\n- `priceInMinorUnits`\n- `stock`\n- `categoryId`\n- `image`\n- `isActive`\n\n`slug`, `ratingAverage`, and `ratingsCount` cannot be updated directly. Changing `name` updates `slug`. Changing `categoryId` verifies the new category exists."
           },
           "response": []
         },
@@ -469,13 +636,183 @@
           ],
           "request": {
             "method": "DELETE",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/products/{{productId}}",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "products", "{{productId}}"]
             },
-            "description": "Deletes the product at `productId`.\n\n- Invalid ID: `400`.\n- Product not found: `404`.\n- Successful delete: `200`."
+            "description": "Admin only. Deletes the product at `productId`.\n\n- Invalid ID: `400`.\n- Product not found: `404`.\n- Successful delete: `200`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Cart",
+      "description": "Logged-in user only. A regular user token is enough. Create a product first so `productId` is set. Adding to the cart does not decrease stock.",
+      "item": [
+        {
+          "name": "Get Cart",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cart",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cart"]
+            },
+            "description": "Returns the current user's cart with live product prices and `subtotal`.\n\nIf the user has never added an item, the response is `{ id: null, items: [], subtotal: 0 }` and no cart row is created.\n\n- Missing or invalid token: `401`."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Cart Item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const item = json.data?.cart?.items?.[0];",
+                  "if (item?.id) {",
+                  "  pm.collectionVariables.set('cartItemId', item.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cart/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cart", "items"]
+            },
+            "description": "Adds a product to the cart. The cart row is created on the first add.\n\nIf the product is already in the cart, the quantity is increased instead of inserting a second row.\n\n- First add: `201`.\n- Same product again: `200`.\n- Missing product or inactive product: `404`.\n- Quantity greater than stock: `400`.\n- Missing token: `401`."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Cart Item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const item = json.data?.cart?.items?.[0];",
+                  "if (item?.id) {",
+                  "  pm.collectionVariables.set('cartItemId', item.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cart/items/{{cartItemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cart", "items", "{{cartItemId}}"]
+            },
+            "description": "Sets the quantity of a cart item. This replaces the quantity; it does not add to it.\n\n- Item not in this user's cart: `404`.\n- Quantity greater than stock: `400`.\n- Invalid item id: `400`."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Cart Item",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cart/items/{{cartItemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cart", "items", "{{cartItemId}}"]
+            },
+            "description": "Removes one item from the current user's cart.\n\n- Item not in this user's cart: `404`."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Cart",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cart",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cart"]
+            },
+            "description": "Removes every item from the current user's cart. The cart row itself is kept."
           },
           "response": []
         }
@@ -483,8 +820,78 @@
     },
     {
       "name": "Validation Examples",
-      "description": "Invalid requests to exercise Zod error messages and business rules.",
+      "description": "Invalid requests to exercise Zod error messages, auth rules, and business rules.",
       "item": [
+        {
+          "name": "Create Category Without Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Unauthorized Category\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "categories"]
+            },
+            "description": "Example `401 Unauthorized`. Expected message: `You are not logged in`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Me Without Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "me"]
+            },
+            "description": "Example `401 Unauthorized`. Expected message: `You are not logged in`."
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid Login Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"WrongPass1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Example `401 Unauthorized`. Expected message: `Invalid email or password`."
+          },
+          "response": []
+        },
         {
           "name": "Invalid Categories Page",
           "request": {
@@ -517,6 +924,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
               }
             ],
             "body": {
@@ -533,7 +944,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "products"]
             },
-            "description": "Example `400 Bad Request` because `priceInMinorUnits` was sent as a string. Expected message: `Price must be a number`."
+            "description": "Example `400 Bad Request` because `priceInMinorUnits` was sent as a string. Expected message: `Price must be a number`. Requires an admin token."
           },
           "response": []
         },
@@ -545,6 +956,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
               }
             ],
             "body": {
@@ -561,7 +976,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "products", "{{productId}}"]
             },
-            "description": "Example `400 Bad Request`. Expected message: `No fields to update`."
+            "description": "Example `400 Bad Request`. Expected message: `No fields to update`. Requires an admin token."
           },
           "response": []
         },
@@ -573,6 +988,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
               }
             ],
             "body": {
@@ -589,7 +1008,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "products", "{{productId}}"]
             },
-            "description": "Shows that `ratingAverage` is server-owned. Expected message: `Unrecognized key: ratingAverage`."
+            "description": "Shows that `ratingAverage` is server-owned. Expected message: `Unrecognized key: ratingAverage`. Requires an admin token."
           },
           "response": []
         },
@@ -654,6 +1073,52 @@
               ]
             },
             "description": "Example `400 Bad Request`. Expected message: `Invalid sort option`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Cart Without Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cart",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cart"]
+            },
+            "description": "Example `401 Unauthorized`. Expected message: `You are not logged in`."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Cart Item Exceeds Stock",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 9999\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cart/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cart", "items"]
+            },
+            "description": "Example `400 Bad Request`. Expected message: `Requested quantity exceeds available stock`.\n\nRequires a logged-in token and an existing `productId`. Adding to the cart still does not decrease stock."
           },
           "response": []
         }
