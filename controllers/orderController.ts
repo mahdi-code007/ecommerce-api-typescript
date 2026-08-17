@@ -4,9 +4,11 @@ import type {
   Response,
 } from "express";
 import * as addressRepository from "../db/repositories/addressRepository";
+import * as cartRepository from "../db/repositories/cartRepository";
 import * as orderRepository from "../db/repositories/orderRepository";
 import type {
   CreateOrderRequest,
+  ListOrdersRequest,
   OrderByIdRequest,
 } from "../schemas/orderSchema";
 import AppError = require("../utils/AppError");
@@ -69,12 +71,27 @@ export const getMyOrders = async (
   res: Response,
 ): Promise<void> => {
   const userId = getAuthenticatedUserId(req);
-  const orders = await orderRepository.listOrdersByUserId(userId);
+  const { query } = getValidated<ListOrdersRequest>(req);
+  const { page, limit } = query;
+  const { orders, total } = await orderRepository.listOrders({
+    userId,
+    status: query.status,
+    sort: query.sort,
+    page,
+    limit,
+  });
+  const totalPages = Math.ceil(total / limit) || 1;
 
   res.status(200).json({
     status: "success",
     results: orders.length,
     data: { orders },
+    pagination: {
+      total,
+      totalPages,
+      page,
+      limit,
+    },
   });
 };
 
@@ -135,5 +152,47 @@ export const cancelMyOrder = async (
     status: "success",
     data: { order: result.order },
     message: "Order cancelled successfully",
+  });
+};
+
+// @desc Add a previous order's products back to the cart
+// @route POST /api/v1/orders/:orderId/reorder
+// @access private
+export const reorderMyOrder = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const userId = getAuthenticatedUserId(req);
+  const { params } = getValidated<OrderByIdRequest>(req);
+  const result = await orderRepository.reorderOrderToCart(
+    userId,
+    params.orderId,
+  );
+
+  if (!result.ok) {
+    next(new AppError("Order not found", 404));
+    return;
+  }
+
+  if (result.addedCount === 0) {
+    next(
+      new AppError(
+        "No products from this order could be added to the cart",
+        400,
+      ),
+    );
+    return;
+  }
+
+  const cart = await cartRepository.getCartViewByUserId(userId);
+
+  res.status(200).json({
+    status: "success",
+    data: {
+      cart,
+      skipped: result.skipped,
+    },
+    message: "Order items added to cart",
   });
 };

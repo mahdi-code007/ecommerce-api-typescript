@@ -5,6 +5,11 @@ import {
   getAllProducts,
   updateProduct,
 } from "../controllers/productController";
+import {
+  createReview,
+  getProductReviews,
+  updateMyReview,
+} from "../controllers/reviewController";
 import { protect, restrictTo } from "../middlewares/auth";
 import validate = require("../middlewares/validate");
 import {
@@ -13,6 +18,11 @@ import {
   productByIdRequestSchema,
   updateProductRequestSchema,
 } from "../schemas/productSchema";
+import {
+  createReviewRequestSchema,
+  getProductReviewsRequestSchema,
+  updateMyReviewRequestSchema,
+} from "../schemas/reviewSchema";
 
 const router = Router();
 
@@ -28,6 +38,26 @@ router
     validate(createProductRequestSchema),
     createProduct,
   );
+
+router.get(
+  "/:id/reviews",
+  validate(getProductReviewsRequestSchema),
+  getProductReviews,
+);
+
+router.post(
+  "/:id/reviews",
+  protect,
+  validate(createReviewRequestSchema),
+  createReview,
+);
+
+router.patch(
+  "/:id/reviews/me",
+  protect,
+  validate(updateMyReviewRequestSchema),
+  updateMyReview,
+);
 
 router
   .route("/:id")

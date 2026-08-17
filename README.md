@@ -21,7 +21,7 @@
 
 This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, PostgreSQL, Drizzle, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
 
-The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, a logged-in shopping cart, multiple shipping addresses with one default, cash-on-delivery checkout, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
+The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, a logged-in shopping cart, multiple shipping addresses with one default, cash-on-delivery checkout, order filtering and reorder, product reviews after delivery, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
 
 > [!NOTE]
 > This is an active learning project. Features are added progressively as I explore backend architecture and full-stack product development.
@@ -55,6 +55,9 @@ flowchart LR
 - Authenticated shopping cart with live product prices and a calculated subtotal
 - Authenticated shipping addresses with one default per user
 - Cash-on-delivery checkout with price snapshots and stock decrement
+- Order list filtering by status, newest/oldest sort, and pagination
+- Reorder a previous order back into the cart
+- Product reviews after delivery that update `ratingAverage`
 - Admin-only category and product create, update, and delete
 - Password hashing with bcrypt
 - Role-based authorization (`user` and `admin`)
@@ -218,6 +221,9 @@ A category that still has associated products cannot be deleted. The API returns
 | `POST` | `/products` | Admin | Create a product linked to an existing category |
 | `PATCH` | `/products/:id` | Admin | Update a product or move it to another category |
 | `DELETE` | `/products/:id` | Admin | Delete a product |
+| `GET` | `/products/:id/reviews` | Public | List reviews for a product |
+| `POST` | `/products/:id/reviews` | Authenticated | Review a product from a delivered order |
+| `PATCH` | `/products/:id/reviews/me` | Authenticated | Update the current user's review |
 
 The public catalog returns products where `isActive` is `true` and supports these optional query parameters:
 
@@ -240,7 +246,17 @@ GET /api/v1/products?search=phone&categoryId=58b9c274-6727-4ad8-921e-8b235bcb69f
 
 Product prices are stored in `priceInMinorUnits` as integers—for example, `125075` represents `1250.75` in the selected currency.
 
-Product responses populate the related category's `name` and `slug`. Rating fields are controlled by the server and cannot be set directly through product creation or update requests.
+Product responses populate the related category's `name` and `slug`. Rating fields are controlled by the server: they change when a customer reviews a product after a delivered order.
+
+A customer may leave one review per product. The product must appear on one of their `delivered` orders. A second review returns `409`. Reviewing before delivery returns `403`.
+
+Create body:
+
+```json
+{ "rating": 5, "comment": "Fast delivery and as described." }
+```
+
+`rating` is required (`1`–`5`). `comment` is optional. `PATCH /products/:id/reviews/me` accepts the same fields partially and rejects an empty body.
 
 ### Cart
 
@@ -306,9 +322,10 @@ A regular user token is enough for the customer endpoints. The first address or 
 | Method | Endpoint | Access | Description |
 | :---: | --- | --- | --- |
 | `POST` | `/orders` | Authenticated | Place an order from the cart |
-| `GET` | `/orders` | Authenticated | List the current user's orders, newest first |
+| `GET` | `/orders` | Authenticated | List the current user's orders |
 | `GET` | `/orders/:orderId` | Authenticated | Get one of the current user's orders |
 | `PATCH` | `/orders/:orderId/cancel` | Authenticated | Cancel a `pending` order and restock |
+| `POST` | `/orders/:orderId/reorder` | Authenticated | Add the order's products back to the cart |
 | `GET` | `/admin/orders` | Admin | List all orders |
 | `GET` | `/admin/orders/:orderId` | Admin | Get any order |
 | `PATCH` | `/admin/orders/:orderId/status` | Admin | Move the order to the next allowed status |
@@ -326,6 +343,23 @@ Admin status body:
 ```
 
 Allowed status flow: `pending → confirmed → shipped → delivered`. `pending` can be cancelled by the customer or an admin. `confirmed` can be cancelled by an admin. `shipped` and `delivered` cannot be cancelled. Delivered orders set `paymentStatus` to `paid`.
+
+`GET /orders` and `GET /admin/orders` accept:
+
+| Parameter | Description |
+| --- | --- |
+| `status` | Optional: `pending`, `confirmed`, `shipped`, `delivered`, or `cancelled` |
+| `sort` | `newest` (default) or `oldest` |
+| `page` | Page number, starting from `1` |
+| `limit` | Page size from `1` to `100` |
+
+Example:
+
+```http
+GET /api/v1/orders?status=pending&sort=oldest&page=1&limit=10
+```
+
+`POST /orders/:orderId/reorder` copies products into the cart at live prices. Unavailable or out-of-stock items are listed in `skipped`. If nothing can be added, the API returns `400`. Checkout is still a separate `POST /orders`.
 
 Empty cart returns `400`. An address that is not the current user's returns `404`. Inactive products or quantity above stock return `400` and leave the cart unchanged. Another user's order returns `404`.
 
@@ -369,6 +403,7 @@ mindmap
       Cart
       Addresses
       Orders
+      Reviews
     HTTP
       routes
       protect
@@ -436,13 +471,15 @@ sequenceDiagram
 
 ### Data relationships
 
-One user has one cart, many shipping addresses, and many orders. Cart items use live product prices. Checkout snapshots price and address onto the order, then decrements stock. One address per user is `default`.
+One user has one cart, many shipping addresses, and many orders. Cart items use live product prices. Checkout snapshots price and address onto the order, then decrements stock. One address per user is `default`. A user may leave one review per product after a delivered order.
 
 ```mermaid
 erDiagram
   USERS ||--o| CARTS : "one cart"
   USERS ||--o{ ADDRESSES : "up to 10"
   USERS ||--o{ ORDERS : places
+  USERS ||--o{ REVIEWS : writes
+  PRODUCTS ||--o{ REVIEWS : receives
   CARTS ||--o{ CART_ITEMS : contains
   PRODUCTS ||--o{ CART_ITEMS : "live price"
   ORDERS ||--o{ ORDER_ITEMS : contains
@@ -488,6 +525,14 @@ erDiagram
     int priceInMinorUnits
     int stock
     boolean isActive
+    float ratingAverage
+    int ratingsCount
+  }
+  REVIEWS {
+    uuid id PK
+    uuid user_id FK
+    uuid product_id FK
+    int rating
   }
   CATEGORIES {
     uuid id PK
@@ -506,6 +551,7 @@ flowchart LR
   User --> AddressAPI["Address APIs"]
   User --> OrderAPI["Order APIs"]
   User --> Me["GET /auth/me"]
+  User --> Reviews["POST product reviews"]
   Admin["Admin"] --> Public
   Admin --> CartAPI
   Admin --> AddressAPI
@@ -513,7 +559,7 @@ flowchart LR
   Admin --> AdminOrders["Admin order APIs"]
   Admin --> Writes["Category and product writes"]
 
-  Public --> Catalog["GET /categories<br/>GET /products"]
+  Public --> Catalog["GET /categories<br/>GET /products<br/>GET product reviews"]
   CartAPI --> CartTables["carts + cart_items"]
   AddressAPI --> AddressTable["addresses"]
   OrderAPI --> OrderTables["orders + order_items"]
@@ -542,7 +588,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 - [ ] Wishlist
 - [ ] Coupons and promotions
 - [ ] Payment gateway integration
-- [ ] Reviews and ratings
+- [x] Reviews and ratings
 - [ ] File and image storage
 - [ ] Automated testing
 - [ ] API documentation
@@ -552,7 +598,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 
 ## 🧪 Explore with Postman
 
-Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, Cart, Addresses, and Orders requests. Customer examples use `{{token}}` from `Login`. Admin order status updates need an admin token.
+Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, Cart, Addresses, Orders, and Reviews requests. Customer examples use `{{token}}` from `Login`. Admin order status updates need an admin token.
 
 ---
 

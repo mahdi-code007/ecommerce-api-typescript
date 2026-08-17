@@ -52,3 +52,9 @@ export {
   type OrderItem,
   type NewOrderItem,
 } from "./orderItems";
+
+export {
+  reviews,
+  type Review,
+  type NewReview,
+} from "./reviews";

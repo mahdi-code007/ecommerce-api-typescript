@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  index,
   integer,
   pgEnum,
   pgTable,
@@ -105,6 +106,14 @@ export const orders = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index("orders_user_id_created_at_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    index("orders_status_created_at_idx").on(
+      table.status,
+      table.createdAt,
+    ),
     check(
       "orders_subtotal_non_negative",
       sql`${table.subtotal} >= 0`,

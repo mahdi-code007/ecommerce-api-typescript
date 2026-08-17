@@ -1,5 +1,6 @@
-import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 import { getPostgresDatabase } from "../../config/postgres";
+import * as cartRepository from "./cartRepository";
 import {
   cartItems,
   carts,
@@ -104,32 +105,6 @@ const mapOrderView = (order: Order, items: OrderItem[]): OrderView => ({
   createdAt: order.createdAt,
   updatedAt: order.updatedAt,
 });
-
-const groupOrders = (
-  rows: Array<{ order: Order; item: OrderItem | null }>,
-): OrderView[] => {
-  const grouped = new Map<string, { order: Order; items: OrderItem[] }>();
-
-  for (const row of rows) {
-    const existing = grouped.get(row.order.id);
-
-    if (!existing) {
-      grouped.set(row.order.id, {
-        order: row.order,
-        items: row.item ? [row.item] : [],
-      });
-      continue;
-    }
-
-    if (row.item) {
-      existing.items.push(row.item);
-    }
-  }
-
-  return [...grouped.values()].map(({ order, items }) =>
-    mapOrderView(order, items),
-  );
-};
 
 const loadOrderItems = async (
   tx: ReturnType<typeof getPostgresDatabase>,
@@ -359,37 +334,85 @@ const placeOrder = async (
   }
 };
 
-const listOrdersByUserId = async (
-  userId: string,
-): Promise<OrderView[]> => {
-  const db = getPostgresDatabase();
+type OrderListSort = "newest" | "oldest";
 
-  const rows = await db
-    .select({
-      order: orders,
-      item: orderItems,
-    })
-    .from(orders)
-    .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
-    .where(eq(orders.userId, userId))
-    .orderBy(desc(orders.createdAt), asc(orderItems.createdAt));
-
-  return groupOrders(rows);
+type ListOrdersParams = {
+  userId?: string;
+  status?: OrderStatus;
+  sort: OrderListSort;
+  page: number;
+  limit: number;
 };
 
-const listAllOrders = async (): Promise<OrderView[]> => {
-  const db = getPostgresDatabase();
+type ListOrdersResult = {
+  orders: OrderView[];
+  total: number;
+};
 
-  const rows = await db
+const listOrders = async (
+  params: ListOrdersParams,
+): Promise<ListOrdersResult> => {
+  const db = getPostgresDatabase();
+  const { userId, status, sort, page, limit } = params;
+  const offset = (page - 1) * limit;
+  const filters: SQL[] = [];
+
+  if (userId) {
+    filters.push(eq(orders.userId, userId));
+  }
+
+  if (status) {
+    filters.push(eq(orders.status, status));
+  }
+
+  const whereClause = filters.length > 0 ? and(...filters) : undefined;
+  const createdAtOrder =
+    sort === "oldest" ? asc(orders.createdAt) : desc(orders.createdAt);
+  const idOrder = sort === "oldest" ? asc(orders.id) : desc(orders.id);
+
+  const [totalResult] = await db
     .select({
-      order: orders,
-      item: orderItems,
+      total: count(),
     })
     .from(orders)
-    .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
-    .orderBy(desc(orders.createdAt), asc(orderItems.createdAt));
+    .where(whereClause);
 
-  return groupOrders(rows);
+  const pagedOrders = await db
+    .select()
+    .from(orders)
+    .where(whereClause)
+    .orderBy(createdAtOrder, idOrder)
+    .limit(limit)
+    .offset(offset);
+
+  if (pagedOrders.length === 0) {
+    return {
+      orders: [],
+      total: totalResult?.total ?? 0,
+    };
+  }
+
+  const orderIds = pagedOrders.map((order) => order.id);
+  const items = await db
+    .select()
+    .from(orderItems)
+    .where(inArray(orderItems.orderId, orderIds))
+    .orderBy(asc(orderItems.createdAt));
+
+  const itemsByOrderId = new Map<string, OrderItem[]>();
+
+  for (const item of items) {
+    const existing = itemsByOrderId.get(item.orderId) ?? [];
+    existing.push(item);
+    itemsByOrderId.set(item.orderId, existing);
+  }
+
+  return {
+    orders: pagedOrders.map((order) =>
+      mapOrderView(order, itemsByOrderId.get(order.id) ?? []),
+    ),
+    total: totalResult?.total ?? 0,
+  };
 };
 
 const findOrderByIdForUser = async (
@@ -525,15 +548,92 @@ const updateOrderStatus = async (
   });
 };
 
+type SkippedReorderItem = {
+  productId: string;
+  productName: string;
+  reason: "unavailable" | "out_of_stock";
+};
+
+type ReorderToCartResult =
+  | { ok: true; addedCount: number; skipped: SkippedReorderItem[] }
+  | { ok: false; reason: "not_found" };
+
+const reorderOrderToCart = async (
+  userId: string,
+  orderId: string,
+): Promise<ReorderToCartResult> => {
+  const order = await findOrderByIdForUser(userId, orderId);
+
+  if (!order) {
+    return {
+      ok: false,
+      reason: "not_found",
+    };
+  }
+
+  const skipped: SkippedReorderItem[] = [];
+  let addedCount = 0;
+
+  for (const item of order.items) {
+    const result = await cartRepository.addOrIncreaseCartItem(
+      userId,
+      item.productId,
+      item.quantity,
+    );
+
+    if (!result.ok) {
+      skipped.push({
+        productId: item.productId,
+        productName: item.productName,
+        reason: result.reason,
+      });
+      continue;
+    }
+
+    addedCount += 1;
+  }
+
+  return {
+    ok: true,
+    addedCount,
+    skipped,
+  };
+};
+
+const hasDeliveredProductForUser = async (
+  userId: string,
+  productId: string,
+): Promise<boolean> => {
+  const db = getPostgresDatabase();
+
+  const [row] = await db
+    .select({
+      id: orders.id,
+    })
+    .from(orders)
+    .innerJoin(orderItems, eq(orderItems.orderId, orders.id))
+    .where(
+      and(
+        eq(orders.userId, userId),
+        eq(orders.status, "delivered"),
+        eq(orderItems.productId, productId),
+      ),
+    )
+    .limit(1);
+
+  return Boolean(row);
+};
+
 export {
   placeOrder,
-  listOrdersByUserId,
-  listAllOrders,
+  listOrders,
   findOrderByIdForUser,
   findOrderById,
   countOrdersByUserId,
   cancelPendingOrderForUser,
   updateOrderStatus,
+  reorderOrderToCart,
+  hasDeliveredProductForUser,
 };
 
 export type {
@@ -541,4 +641,9 @@ export type {
   PlaceOrderResult,
   CancelOrderResult,
   UpdateStatusResult,
+  ListOrdersParams,
+  ListOrdersResult,
+  OrderListSort,
+  ReorderToCartResult,
+  SkippedReorderItem,
 };

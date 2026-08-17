@@ -5,6 +5,7 @@ import type {
 } from "express";
 import * as orderRepository from "../db/repositories/orderRepository";
 import type {
+  ListOrdersRequest,
   OrderByIdRequest,
   UpdateOrderStatusRequest,
 } from "../schemas/orderSchema";
@@ -15,15 +16,29 @@ import getValidated = require("../utils/getValidated");
 // @route GET /api/v1/admin/orders
 // @access private/admin
 export const getAllOrders = async (
-  _req: Request,
+  req: Request,
   res: Response,
 ): Promise<void> => {
-  const orders = await orderRepository.listAllOrders();
+  const { query } = getValidated<ListOrdersRequest>(req);
+  const { page, limit } = query;
+  const { orders, total } = await orderRepository.listOrders({
+    status: query.status,
+    sort: query.sort,
+    page,
+    limit,
+  });
+  const totalPages = Math.ceil(total / limit) || 1;
 
   res.status(200).json({
     status: "success",
     results: orders.length,
     data: { orders },
+    pagination: {
+      total,
+      totalPages,
+      page,
+      limit,
+    },
   });
 };
 

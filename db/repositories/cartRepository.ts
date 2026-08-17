@@ -207,6 +207,58 @@ const insertCartItem = async (
   return item;
 };
 
+type AddOrIncreaseCartItemResult =
+  | { ok: true }
+  | { ok: false; reason: "unavailable" | "out_of_stock" };
+
+const addOrIncreaseCartItem = async (
+  userId: string,
+  productId: string,
+  quantity: number,
+): Promise<AddOrIncreaseCartItemResult> => {
+  const db = getPostgresDatabase();
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(eq(products.id, productId))
+    .limit(1);
+
+  if (!product || !product.isActive) {
+    return {
+      ok: false,
+      reason: "unavailable",
+    };
+  }
+
+  if (product.stock < 1) {
+    return {
+      ok: false,
+      reason: "out_of_stock",
+    };
+  }
+
+  const cart = await getOrCreateCart(userId);
+  const existingItem = await findItemByProduct(cart.id, productId);
+  const nextQuantity = (existingItem?.quantity ?? 0) + quantity;
+
+  if (nextQuantity > product.stock) {
+    return {
+      ok: false,
+      reason: "out_of_stock",
+    };
+  }
+
+  if (existingItem) {
+    await updateCartItemQuantity(existingItem.id, nextQuantity);
+  } else {
+    await insertCartItem(cart.id, productId, quantity);
+  }
+
+  return {
+    ok: true,
+  };
+};
+
 const updateCartItemQuantity = async (
   itemId: string,
   quantity: number,
@@ -290,6 +342,7 @@ export {
   findItemInUserCart,
   insertCartItem,
   updateCartItemQuantity,
+  addOrIncreaseCartItem,
   deleteCartItem,
   clearCartByUserId,
 };
@@ -297,4 +350,5 @@ export {
 export type {
   CartView,
   CartItemView,
+  AddOrIncreaseCartItemResult,
 };
