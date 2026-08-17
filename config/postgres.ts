@@ -1,7 +1,10 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import * as schema from "../db/schema";
 
-let database: NodePgDatabase | null = null;
+type PostgresDatabase = NodePgDatabase<typeof schema>;
+
+let database: PostgresDatabase | null = null;
 
 const connectPostgres = async (): Promise<void> => {
   const databaseUrl = process.env.DATABASE_URL;
@@ -18,12 +21,13 @@ const connectPostgres = async (): Promise<void> => {
 
   database = drizzle({
     client: pool,
+    schema,
   });
 
   console.log("PostgreSQL Connected");
 };
 
-const getPostgresDatabase = (): NodePgDatabase => {
+const getPostgresDatabase = (): PostgresDatabase => {
   if (!database) {
     throw new Error("PostgreSQL has not been connected");
   }

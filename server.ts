@@ -1,12 +1,10 @@
 import dotenv from "dotenv";
 import app = require("./app");
-import connectDB = require("./config/database");
 import { connectPostgres } from "./config/postgres";
 
 dotenv.config({ path: "config.env" });
 
 const startServer = async (): Promise<void> => {
-  await connectDB();
   await connectPostgres();
 
   const port = Number(process.env.PORT ?? 3000);

@@ -1,7 +1,11 @@
 import { z } from "zod";
 
-const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, {
-  error: "Invalid id",
+const categoryIdSchema = z.uuid({
+  error: "Invalid category id",
+});
+
+const productIdSchema = z.uuid({
+  error: "Invalid product id",
 });
 
 const nameSchema = z
@@ -60,7 +64,7 @@ const productFieldsSchema = z.strictObject({
       error: "Stock cannot be negative",
     }),
 
-  categoryId: objectIdSchema,
+  categoryId: categoryIdSchema,
 
   image: z
     .string({
@@ -88,14 +92,14 @@ const updateProductSchema = productFieldsSchema
 
 const updateProductRequestSchema = z.object({
   params: z.strictObject({
-    id: objectIdSchema,
+    id: productIdSchema,
   }),
   body: updateProductSchema,
 });
 
 const productByIdRequestSchema = z.object({
   params: z.strictObject({
-    id: objectIdSchema,
+    id: productIdSchema,
   }),
 });
 
@@ -146,7 +150,7 @@ const getProductsQuerySchema = z
       })
       .default(10),
 
-    categoryId: objectIdSchema.optional(),
+    categoryId: categoryIdSchema.optional(),
 
     search: z
       .string({

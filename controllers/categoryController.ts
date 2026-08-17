@@ -3,8 +3,8 @@ import type {
   Request,
   Response,
 } from "express";
-import Category = require("../models/Category");
-import Product = require("../models/Product");
+import * as categoryRepository from "../db/repositories/categoryRepository";
+import * as productRepository from "../db/repositories/productRepository";
 import AppError = require("../utils/AppError");
 import getValidated = require("../utils/getValidated");
 import type {
@@ -22,7 +22,7 @@ export const createCategory = async (
   res: Response,
 ): Promise<void> => {
   const { body } = getValidated<CreateCategoryRequest>(req);
-  const category = await Category.create(body);
+  const category = await categoryRepository.createCategory(body);
 
   res.status(201).json({
     status: "success",
@@ -40,15 +40,9 @@ export const getAllCategories = async (
 ): Promise<void> => {
   const { query } = getValidated<GetCategoriesRequest>(req);
   const { page, limit } = query;
-  const skip = (page - 1) * limit;
 
-  const total = await Category.countDocuments();
+  const { total, categories } = await categoryRepository.findAllCategories({ page, limit });
   const totalPages = Math.ceil(total / limit) || 1;
-
-  const categories = await Category.find()
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit);
 
   res.status(200).json({
     status: "success",
@@ -71,7 +65,7 @@ export const getCategory = async (
   next: NextFunction,
 ): Promise<void> => {
   const { params } = getValidated<CategoryByIdRequest>(req);
-  const category = await Category.findById(params.id);
+  const category = await categoryRepository.findCategoryById(params.id);
 
   if (!category) {
     next(new AppError("Category not found", 404));
@@ -95,28 +89,12 @@ export const updateCategory = async (
   const { params, body } =
     getValidated<UpdateCategoryRequest>(req);
 
-  const category = await Category.findById(params.id);
+  const category = await categoryRepository.updateCategoryById(params.id, body);
 
   if (!category) {
     next(new AppError("Category not found", 404));
     return;
   }
-
-  const { name, description, image } = body;
-
-  if (name !== undefined) {
-    category.name = name;
-  }
-
-  if (description !== undefined) {
-    category.description = description;
-  }
-
-  if (image !== undefined) {
-    category.image = image;
-  }
-
-  await category.save();
 
   res.status(200).json({
     status: "success",
@@ -135,11 +113,10 @@ export const deleteCategory = async (
 ): Promise<void> => {
   const { params } = getValidated<CategoryByIdRequest>(req);
 
-  const associatedProductExists = await Product.exists({
-    category: params.id,
-  });
+  const associatedProductsCount =
+    await productRepository.countProductsByCategoryId(params.id);
 
-  if (associatedProductExists) {
+  if (associatedProductsCount > 0) {
     next(
       new AppError(
         "Cannot delete a category that has associated products",
@@ -149,7 +126,7 @@ export const deleteCategory = async (
     return;
   }
 
-  const category = await Category.findByIdAndDelete(params.id);
+  const category = await categoryRepository.deleteCategoryById(params.id);
 
   if (!category) {
     next(new AppError("Category not found", 404));
