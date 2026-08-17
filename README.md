@@ -21,7 +21,7 @@
 
 This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, PostgreSQL, Drizzle, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
 
-The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
+The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, a logged-in shopping cart, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
 
 > [!NOTE]
 > This is an active learning project. Features are added progressively as I explore backend architecture and full-stack product development.
@@ -52,6 +52,7 @@ flowchart LR
 
 - JWT authentication with register, login, and current-user endpoints
 - Guest browsing of the public category and product catalog
+- Authenticated shopping cart with live product prices and a calculated subtotal
 - Admin-only category and product create, update, and delete
 - Password hashing with bcrypt
 - Role-based authorization (`user` and `admin`)
@@ -160,7 +161,7 @@ The API is available at `http://localhost:3000` by default.
 
 Base path: `http://localhost:3000/api/v1`
 
-Catalog **reads** are public so guests can browse without an account. Catalog **writes** require an admin JWT:
+Catalog **reads** are public so guests can browse without an account. Catalog **writes** require an admin JWT. Cart requests require any logged-in user JWT:
 
 ```http
 Authorization: Bearer <access_token>
@@ -230,6 +231,28 @@ Product prices are stored in `priceInMinorUnits` as integers—for example, `125
 
 Product responses populate the related category's `name` and `slug`. Rating fields are controlled by the server and cannot be set directly through product creation or update requests.
 
+### Cart
+
+A regular user token is enough. The cart is created on the first add, not on `GET`. Stock is checked so quantity cannot exceed what is available, but adding to the cart does not decrease stock.
+
+| Method | Endpoint | Access | Description |
+| :---: | --- | --- | --- |
+| `GET` | `/cart` | Authenticated | Return the current user's cart, items, and `subtotal` |
+| `POST` | `/cart/items` | Authenticated | Add a product, or increase quantity if it is already in the cart |
+| `PATCH` | `/cart/items/:itemId` | Authenticated | Set an item quantity |
+| `DELETE` | `/cart/items/:itemId` | Authenticated | Remove one item |
+| `DELETE` | `/cart` | Authenticated | Clear every item |
+
+Add and update bodies use:
+
+```json
+{ "productId": "<uuid>", "quantity": 2 }
+```
+
+`PATCH` accepts `quantity` only. If the user has never added an item, `GET /cart` returns `{ "id": null, "items": [], "subtotal": 0 }` without inserting a cart row.
+
+Cart prices are read live from `products`. Item totals and `subtotal` use `priceInMinorUnits`. Missing or inactive products return `404`. Quantity greater than stock returns `400`. An item that does not belong to the current user's cart returns `404`.
+
 ## 🗂️ Project structure
 
 ```text
@@ -257,11 +280,12 @@ Product responses populate the related category's `name` and `slug`. Rating fiel
 - [x] Product-to-category relationships
 - [x] Validation and centralized error handling
 - [x] Authentication and authorization
+- [x] Shopping cart
 - [ ] User and address management
 - [ ] Brands and subcategories
 - [ ] Product variants and advanced inventory
 - [ ] Product image upload and storage
-- [ ] Wishlist and shopping cart
+- [ ] Wishlist
 - [ ] Coupons and promotions
 - [ ] Orders and checkout flow
 - [ ] Payment gateway integration
@@ -275,7 +299,7 @@ Product responses populate the related category's `name` and `slug`. Rating fiel
 
 ## 🧪 Explore with Postman
 
-Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore and test the available requests.
+Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, and Cart requests. Cart examples use `{{token}}` from `Login`; a regular user token is enough.
 
 ---
 
