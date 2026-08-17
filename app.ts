@@ -11,9 +11,37 @@ interface ApiError extends Error {
   statusCode?: number;
   status?: "fail" | "error";
   isOperational?: boolean;
-  code?: number;
-  keyValue?: Record<string, unknown>;
+  cause?: unknown;
 }
+
+type PostgresDriverError = {
+  code?: string;
+  detail?: string;
+  constraint?: string;
+};
+
+const getPostgresDriverError = (
+  error: Error,
+): PostgresDriverError | null => {
+  const cause = (error as ApiError).cause;
+
+  if (!cause || typeof cause !== "object") {
+    return null;
+  }
+
+  return cause as PostgresDriverError;
+};
+
+const getDuplicatedFieldFromPostgresDetail = (
+  detail?: string,
+): string | undefined => {
+  if (!detail) {
+    return undefined;
+  }
+
+  const match = detail.match(/Key \((.+?)\)=/);
+  return match?.[1];
+};
 
 const app = express();
 
@@ -48,27 +76,43 @@ const globalErrorHandler: ErrorRequestHandler = (
       ? (error as ApiError)
       : new Error("Unknown error");
 
+  const postgresError = getPostgresDriverError(err);
+
   let statusCode = err.statusCode ?? 500;
   let status: "fail" | "error" = err.status ?? "error";
   let message = err.message;
 
-  if (err.code === 11000) {
+  // PostgreSQL unique violation
+  if (postgresError?.code === "23505") {
     statusCode = 409;
     status = "fail";
 
-    const duplicatedField = Object.keys(
-      err.keyValue ?? {},
-    )[0];
+    const duplicatedField =
+      getDuplicatedFieldFromPostgresDetail(postgresError.detail);
 
     message = duplicatedField
       ? `${duplicatedField} already exists`
       : "Resource already exists";
   }
 
+  // PostgreSQL foreign key violation
+  if (postgresError?.code === "23503") {
+    status = "fail";
+
+    if (postgresError.detail?.includes("is still referenced")) {
+      statusCode = 409;
+      message = "Cannot delete a category that has associated products";
+    } else {
+      statusCode = 404;
+      message = "Category not found";
+    }
+  }
+
   if (
     process.env.NODE_ENV === "production" &&
     !err.isOperational &&
-    err.code !== 11000
+    postgresError?.code !== "23505" &&
+    postgresError?.code !== "23503"
   ) {
     message = "Something went wrong";
   }

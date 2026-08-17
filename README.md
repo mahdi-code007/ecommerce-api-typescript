@@ -7,7 +7,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20.19%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Express](https://img.shields.io/badge/Express-5-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Drizzle-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
 [![Status](https://img.shields.io/badge/Status-In_Development-F59E0B?style=flat-square)](#-roadmap)
 [![Learning Project](https://img.shields.io/badge/Type-Learning_Project-8B5CF6?style=flat-square)](#-my-learning-journey)
@@ -19,9 +19,9 @@
 
 ## ✨ Overview
 
-This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, MongoDB, Mongoose, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
+This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, PostgreSQL, Drizzle, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
 
-The current version provides category and product management with pagination, category-based product filtering, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
+The current version provides category and product management, a public product catalog with search, filtering, sorting, and pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
 
 > [!NOTE]
 > This is an active learning project. Features are added progressively as I explore backend architecture and full-stack product development.
@@ -44,7 +44,7 @@ My goal is not to build only a standalone API. I am learning how to design an en
 flowchart LR
     Mobile["📱 Mobile App<br/>Android & Flutter"] --> API["⚙️ Ecommerce API<br/>Node.js & Express"]
     Dashboard["🖥️ Admin Dashboard"] --> API
-    API --> Database[("🍃 MongoDB")]
+    API --> Database[("🐘 PostgreSQL")]
     API --> Services["🔌 External Services<br/>Payments, Email & Storage"]
 ```
 
@@ -52,14 +52,16 @@ flowchart LR
 
 - Category CRUD operations
 - Product creation, listing, updating, and deletion
-- Product filtering by category
+- Active product catalog with case-insensitive name search
+- Product filtering by category, price range, and stock availability
+- Product sorting by recency, price, and rating
 - Category relationship validation and populated product responses
 - Integer-based pricing in minor currency units
 - Product stock and active-status management
 - Protected category deletion when associated products exist
 - Request validation with Zod
 - Pagination with configurable page size
-- MongoDB persistence through Mongoose
+- PostgreSQL persistence through Drizzle
 - Automatic category slug generation
 - Centralized operational error handling
 - Duplicate resource detection
@@ -74,8 +76,8 @@ flowchart LR
 | Runtime | Node.js |
 | API framework | Express 5 |
 | Language | TypeScript |
-| Database | MongoDB |
-| ODM | Mongoose |
+| Database | PostgreSQL |
+| ORM | Drizzle |
 | Validation | Zod |
 | Logging | Morgan |
 | Development runner | TSX |
@@ -85,7 +87,7 @@ flowchart LR
 ### Prerequisites
 
 - Node.js `20.19` or newer
-- MongoDB locally or a MongoDB Atlas database
+- PostgreSQL locally or a hosted PostgreSQL database
 
 ### Installation
 
@@ -108,9 +110,14 @@ flowchart LR
    cp .env.example config.env
    ```
 
-4. Add your MongoDB connection string to `config.env`.
+4. Add your PostgreSQL connection string to `config.env`.
+5. Apply database migrations:
 
-5. Start the development server:
+   ```bash
+   npm run db:migrate
+   ```
+
+6. Start the development server:
 
    ```bash
    npm run dev
@@ -124,7 +131,7 @@ The API is available at `http://localhost:3000` by default.
 | --- | --- | --- |
 | `PORT` | HTTP server port | `3000` |
 | `NODE_ENV` | Runtime environment | `development` |
-| `DATABASE_URI` | MongoDB connection string | `mongodb://127.0.0.1:27017/ecommerce` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://ecommerce_user:YOUR_PASSWORD@localhost:5432/ecommerce_db` |
 
 > [!IMPORTANT]
 > Never commit `config.env` or any file containing real credentials. Use `.env.example` only as a safe configuration template.
@@ -137,6 +144,9 @@ The API is available at `http://localhost:3000` by default.
 | `npm run typecheck` | Check TypeScript types without emitting files |
 | `npm run build` | Compile the project into `dist/` |
 | `npm start` | Run the compiled production build |
+| `npm run db:generate` | Generate a Drizzle migration from schema changes |
+| `npm run db:migrate` | Apply pending migrations to PostgreSQL |
+| `npm run db:studio` | Open Drizzle Studio |
 
 ## 🔌 API reference
 
@@ -160,12 +170,31 @@ A category that still has associated products cannot be deleted. The API returns
 
 | Method | Endpoint | Description |
 | :---: | --- | --- |
-| `GET` | `/products` | List products with pagination and optional category filtering |
+| `GET` | `/products` | Search, filter, sort, and paginate active products |
 | `POST` | `/products` | Create a product linked to an existing category |
 | `PATCH` | `/products/:id` | Update a product or move it to another category |
 | `DELETE` | `/products/:id` | Delete a product |
 
-Use the optional `categoryId` query parameter to filter the product list. Product prices are stored in `priceInMinorUnits` as integers—for example, `125075` represents `1250.75` in the selected currency.
+The public catalog returns products where `isActive` is `true` and supports these optional query parameters:
+
+| Parameter | Description |
+| --- | --- |
+| `search` | Case-insensitive partial match against the product name |
+| `categoryId` | Filter by category ID |
+| `minPrice` | Minimum `priceInMinorUnits` |
+| `maxPrice` | Maximum `priceInMinorUnits` |
+| `inStock` | Use `true` for products with stock or `false` for out-of-stock products |
+| `sort` | `newest`, `price_asc`, `price_desc`, or `rating_desc` |
+| `page` | Page number, starting from `1` |
+| `limit` | Page size from `1` to `100` |
+
+Example:
+
+```http
+GET /api/v1/products?search=phone&categoryId=58b9c274-6727-4ad8-921e-8b235bcb69fb&minPrice=100000&maxPrice=500000&inStock=true&sort=price_asc&page=1&limit=20
+```
+
+Product prices are stored in `priceInMinorUnits` as integers—for example, `125075` represents `1250.75` in the selected currency.
 
 Product responses populate the related category's `name` and `slug`. Rating fields are controlled by the server and cannot be set directly through product creation or update requests.
 
@@ -175,8 +204,9 @@ Product responses populate the related category's `name` and `slug`. Rating fiel
 .
 ├── config/          # Database and application configuration
 ├── controllers/     # Request handlers and business operations
+├── db/              # Drizzle schema and repositories
+├── drizzle/         # Generated SQL migrations
 ├── middlewares/     # Express middleware
-├── models/          # Mongoose data models
 ├── postman/         # Postman API collection
 ├── routes/          # API route definitions
 ├── schemas/         # Zod validation schemas
@@ -191,7 +221,8 @@ Product responses populate the related category's `name` and `slug`. Rating fiel
 - [x] Project foundation and TypeScript setup
 - [x] Category management
 - [x] Product catalog foundation
-- [x] Product-to-category relationships and filtering
+- [x] Product search, filtering, sorting, and pagination
+- [x] Product-to-category relationships
 - [x] Validation and centralized error handling
 - [ ] Authentication and authorization
 - [ ] User and address management

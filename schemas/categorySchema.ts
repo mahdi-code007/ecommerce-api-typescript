@@ -13,12 +13,12 @@ const nameSchema = z
     error: "Name must be less than 50 characters long",
   });
 
-const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, {
+const categoryIdSchema = z.uuid({
   error: "Invalid category id",
 });
 
 const categoryParamsSchema = z.strictObject({
-  id: objectIdSchema,
+  id: categoryIdSchema,
 });
 const createCategorySchema = z.strictObject({
   name: nameSchema,
