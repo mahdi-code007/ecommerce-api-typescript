@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Ecommerce API v1",
-    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart, address, and order requests need the same `{{token}}`. A regular user token is enough; admin is not required except for `/admin/orders`.\n7. Create an address, add a product to the cart, then run `Place Order`.\n8. Try deleting a category before deleting its product to see a `409 Conflict` response.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me`, cart, addresses, and customer orders.\n- Admin: category and product writes, and `/admin/orders`.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Authenticated requests send `Authorization: Bearer {{token}}`.\n- Adding to the cart does not decrease stock. Checkout does.\n- Phone numbers must be Saudi: `05XXXXXXXX` or `+9665XXXXXXXX`.\n- Checkout is cash on delivery only.",
+    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart, address, and order requests need the same `{{token}}`. A regular user token is enough; admin is not required except for `/admin/orders`.\n7. Create an address, add a product to the cart, then run `Place Order`.\n8. Try deleting a category before deleting its product to see a `409 Conflict` response.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me`, profile update, password change, cart, addresses, and customer orders.\n- Admin: category and product writes, and `/admin/orders`.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Authenticated requests send `Authorization: Bearer {{token}}`.\n- Adding to the cart does not decrease stock. Checkout does.\n- Phone numbers must be Saudi: `05XXXXXXXX` or `+9665XXXXXXXX`.\n- Checkout is cash on delivery only.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -179,6 +179,116 @@
               "path": ["api", "v1", "auth", "me"]
             },
             "description": "Returns the current user from the access token.\n\n- Missing or invalid token: `401`.\n- The response never includes `passwordHash`."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Me",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman User Updated\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "me"]
+            },
+            "description": "Updates `name` and/or `email`. Empty body returns `400`. A taken email returns `409`.\n\nThe response never includes `passwordHash`."
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('userPassword', 'NewSecret123!');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{userPassword}}\",\n  \"newPassword\": \"NewSecret123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me/password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "me", "password"]
+            },
+            "description": "Changes the password. Wrong `currentPassword` returns `401`.\n\nOn success this request saves `NewSecret123!` to `userPassword` so later Auth requests keep working. The current JWT stays valid."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Me",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "me"]
+            },
+            "description": "Deletes the current account after confirming the password.\n\nIf the user has orders, the API returns `409`. Cart and addresses are removed with the account.\n\nThis is destructive. Run it last."
           },
           "response": []
         }
@@ -1244,6 +1354,70 @@
               "path": ["api", "v1", "auth", "me"]
             },
             "description": "Example `401 Unauthorized`. Expected message: `You are not logged in`."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Me Empty Body",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "me"]
+            },
+            "description": "Example `400 Bad Request`. Expected message: `No fields to update`."
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password Wrong Current",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"WrongPass1\",\n  \"newPassword\": \"NewSecret123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me/password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "me", "password"]
+            },
+            "description": "Example `401 Unauthorized`. Expected message: `Current password is incorrect`."
           },
           "response": []
         },

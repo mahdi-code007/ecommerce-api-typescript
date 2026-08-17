@@ -1,10 +1,20 @@
 import { Router } from "express";
-import { getMe, login, register } from "../controllers/authController";
+import {
+  deleteMe,
+  getMe,
+  login,
+  register,
+  updateMe,
+  updateMyPassword,
+} from "../controllers/authController";
 import { protect } from "../middlewares/auth";
 import validate = require("../middlewares/validate");
 import {
+  deleteMeRequestSchema,
   loginUserRequestSchema,
   registerUserRequestSchema,
+  updateMeRequestSchema,
+  updateMyPasswordRequestSchema,
 } from "../schemas/authSchema";
 
 const router = Router();
@@ -21,10 +31,25 @@ router.post(
   login,
 );
 
-router.get(
-  "/me",
+router.patch(
+  "/me/password",
   protect,
-  getMe,
+  validate(updateMyPasswordRequestSchema),
+  updateMyPassword,
 );
+
+router
+  .route("/me")
+  .get(protect, getMe)
+  .patch(
+    protect,
+    validate(updateMeRequestSchema),
+    updateMe,
+  )
+  .delete(
+    protect,
+    validate(deleteMeRequestSchema),
+    deleteMe,
+  );
 
 export = router;

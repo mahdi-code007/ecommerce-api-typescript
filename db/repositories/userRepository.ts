@@ -10,6 +10,12 @@ type CreateUserInput = {
   passwordHash: string;
 };
 
+type UpdateUserInput = {
+  name?: string;
+  email?: string;
+  passwordHash?: string;
+};
+
 const toPublicUser = (user: User): PublicUser => {
   const { passwordHash: _passwordHash, ...publicUser } = user;
   return publicUser;
@@ -65,14 +71,63 @@ const findUserById = async (
   return user ?? null;
 };
 
+const updateUserById = async (
+  id: string,
+  input: UpdateUserInput,
+): Promise<User | null> => {
+  const db = getPostgresDatabase();
+
+  const updateValues: Partial<typeof users.$inferInsert> & {
+    updatedAt: Date;
+  } = {
+    updatedAt: new Date(),
+  };
+
+  if (input.name !== undefined) {
+    updateValues.name = input.name;
+  }
+
+  if (input.email !== undefined) {
+    updateValues.email = input.email;
+  }
+
+  if (input.passwordHash !== undefined) {
+    updateValues.passwordHash = input.passwordHash;
+  }
+
+  const [user] = await db
+    .update(users)
+    .set(updateValues)
+    .where(eq(users.id, id))
+    .returning();
+
+  return user ?? null;
+};
+
+const deleteUserById = async (
+  id: string,
+): Promise<User | null> => {
+  const db = getPostgresDatabase();
+
+  const [user] = await db
+    .delete(users)
+    .where(eq(users.id, id))
+    .returning();
+
+  return user ?? null;
+};
+
 export {
   createUser,
   findUserByEmail,
   findUserById,
+  updateUserById,
+  deleteUserById,
   toPublicUser,
 };
 
 export type {
   CreateUserInput,
+  UpdateUserInput,
   PublicUser,
 };

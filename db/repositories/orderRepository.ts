@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { getPostgresDatabase } from "../../config/postgres";
 import {
   cartItems,
@@ -426,6 +426,21 @@ const findOrderById = async (
   return loadOrderViewById(db, orderId);
 };
 
+const countOrdersByUserId = async (
+  userId: string,
+): Promise<number> => {
+  const db = getPostgresDatabase();
+
+  const [result] = await db
+    .select({
+      total: count(),
+    })
+    .from(orders)
+    .where(eq(orders.userId, userId));
+
+  return result?.total ?? 0;
+};
+
 const cancelPendingOrderForUser = async (
   userId: string,
   orderId: string,
@@ -516,6 +531,7 @@ export {
   listAllOrders,
   findOrderByIdForUser,
   findOrderById,
+  countOrdersByUserId,
   cancelPendingOrderForUser,
   updateOrderStatus,
 };

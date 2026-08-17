@@ -50,7 +50,7 @@ flowchart LR
 
 ## 🚀 Current capabilities
 
-- JWT authentication with register, login, and current-user endpoints
+- JWT authentication with register, login, current-user, profile update, password change, and account delete
 - Guest browsing of the public category and product catalog
 - Authenticated shopping cart with live product prices and a calculated subtotal
 - Authenticated shipping addresses with one default per user
@@ -186,6 +186,15 @@ Log in again after that update so the new token includes `role: admin`.
 | `POST` | `/auth/register` | Public | Create a customer account |
 | `POST` | `/auth/login` | Public | Sign in and receive a JWT |
 | `GET` | `/auth/me` | Authenticated | Return the current user |
+| `PATCH` | `/auth/me` | Authenticated | Update name and/or email |
+| `PATCH` | `/auth/me/password` | Authenticated | Change password |
+| `DELETE` | `/auth/me` | Authenticated | Delete the account after confirming the password |
+
+`PATCH /auth/me` accepts `name` and `email` partially and rejects an empty body. Email is stored in lowercase. A taken email returns `409`. The response never includes `passwordHash`.
+
+Change password requires `currentPassword` and `newPassword`. A wrong current password returns `401`. The new password must differ from the current one.
+
+Delete account requires the current password. If the user has any orders, the API returns `409`. Cart and addresses are removed with the user when deletion succeeds.
 
 ### Categories
 
@@ -526,7 +535,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 - [x] Shopping cart
 - [x] Shipping addresses
 - [x] COD checkout and order status
-- [ ] User profile management
+- [x] User profile management
 - [ ] Brands and subcategories
 - [ ] Product variants and advanced inventory
 - [ ] Product image upload and storage
