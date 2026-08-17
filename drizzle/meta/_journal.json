@@ -36,6 +36,13 @@
       "when": 1786992208560,
       "tag": "0004_ancient_sphinx",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786998013474,
+      "tag": "0005_heavy_nick_fury",
+      "breakpoints": true
     }
   ]
 }

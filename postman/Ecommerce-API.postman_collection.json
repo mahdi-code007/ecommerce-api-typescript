@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Ecommerce API v1",
-    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart and address requests need the same `{{token}}`. A regular user token is enough; admin is not required.\n7. Try deleting a category before deleting its product to see a `409 Conflict` response.\n8. Delete the product, then delete the category.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me`, all cart requests, and all address requests.\n- Admin: category and product create, update, and delete.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Write, cart, and address requests send `Authorization: Bearer {{token}}`.\n- `slug`, `ratingAverage`, and `ratingsCount` are server-owned and are not accepted on create or update.\n- Price is sent as `priceInMinorUnits` — an integer in the smallest currency unit.\n- Adding to the cart does not decrease stock. Stock is checked only so quantity cannot exceed what is available.\n- Phone numbers must be Saudi: `05XXXXXXXX` or `+9665XXXXXXXX`.",
+    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart, address, and order requests need the same `{{token}}`. A regular user token is enough; admin is not required except for `/admin/orders`.\n7. Create an address, add a product to the cart, then run `Place Order`.\n8. Try deleting a category before deleting its product to see a `409 Conflict` response.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me`, cart, addresses, and customer orders.\n- Admin: category and product writes, and `/admin/orders`.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Authenticated requests send `Authorization: Bearer {{token}}`.\n- Adding to the cart does not decrease stock. Checkout does.\n- Phone numbers must be Saudi: `05XXXXXXXX` or `+9665XXXXXXXX`.\n- Checkout is cash on delivery only.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -53,6 +53,12 @@
       "value": "",
       "type": "string",
       "description": "Saved automatically after a successful create or update address request."
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "type": "string",
+      "description": "Saved automatically after a successful Place Order request."
     }
   ],
   "item": [
@@ -1007,6 +1013,195 @@
       ]
     },
     {
+      "name": "Orders",
+      "description": "Logged-in customer. Create an address and add a cart item first. Checkout is cash on delivery and decreases stock.",
+      "item": [
+        {
+          "name": "Place Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data?.order?.id) {",
+                  "  pm.collectionVariables.set('orderId', json.data.order.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addressId\": \"{{addressId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders"]
+            },
+            "description": "Creates an order from the current cart, snapshots prices and the shipping address, decrements stock, and clears cart items.\n\n- Empty cart: `400`.\n- Address not owned by this user: `404`.\n- Product unavailable or out of stock: `400`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders"]
+            },
+            "description": "Lists the current user's orders, newest first."
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Order By Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "{{orderId}}"]
+            },
+            "description": "Returns one order owned by the current user. Another user's order returns `404`."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel My Order",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "{{orderId}}", "cancel"]
+            },
+            "description": "Cancels a `pending` order and restores stock. Confirmed or later orders return `400`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin Orders",
+      "description": "Admin JWT required. Use after promoting the logged-in user and running Login again.",
+      "item": [
+        {
+          "name": "Get All Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "orders"]
+            },
+            "description": "Lists every order. A regular user token returns `403`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Order By Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "orders", "{{orderId}}"]
+            },
+            "description": "Returns any order by id."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Order Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"confirmed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders/{{orderId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "orders", "{{orderId}}", "status"]
+            },
+            "description": "Moves the order along `pending → confirmed → shipped → delivered`.\n\n`delivered` sets `paymentStatus` to `paid`. An illegal transition returns `400`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Validation Examples",
       "description": "Invalid requests to exercise Zod error messages, auth rules, and business rules.",
       "item": [
@@ -1353,6 +1548,57 @@
               "path": ["api", "v1", "addresses"]
             },
             "description": "Example `400 Bad Request`. Expected message: `Phone must be a Saudi number such as 05XXXXXXXX or +9665XXXXXXXX`."
+          },
+          "response": []
+        },
+        {
+          "name": "Place Order With Empty Cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addressId\": \"{{addressId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders"]
+            },
+            "description": "Example `400 Bad Request`. Expected message: `Cart is empty`. Requires a logged-in token and `addressId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Admin Orders As User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "orders"]
+            },
+            "description": "Example `403 Forbidden` when `{{token}}` belongs to a regular user. Expected message: `You do not have permission to perform this action`."
           },
           "response": []
         }

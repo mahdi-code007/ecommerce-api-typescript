@@ -34,3 +34,21 @@ export {
   type Address,
   type NewAddress,
 } from "./addresses";
+
+export {
+  orderStatusEnum,
+  paymentMethodEnum,
+  paymentStatusEnum,
+  orders,
+  type Order,
+  type NewOrder,
+  type OrderStatus,
+  type PaymentMethod,
+  type PaymentStatus,
+} from "./orders";
+
+export {
+  orderItems,
+  type OrderItem,
+  type NewOrderItem,
+} from "./orderItems";

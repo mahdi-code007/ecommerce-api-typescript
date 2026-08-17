@@ -21,7 +21,7 @@
 
 This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, PostgreSQL, Drizzle, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
 
-The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, a logged-in shopping cart, multiple shipping addresses with one default, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
+The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, a logged-in shopping cart, multiple shipping addresses with one default, cash-on-delivery checkout, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
 
 > [!NOTE]
 > This is an active learning project. Features are added progressively as I explore backend architecture and full-stack product development.
@@ -54,6 +54,7 @@ flowchart LR
 - Guest browsing of the public category and product catalog
 - Authenticated shopping cart with live product prices and a calculated subtotal
 - Authenticated shipping addresses with one default per user
+- Cash-on-delivery checkout with price snapshots and stock decrement
 - Admin-only category and product create, update, and delete
 - Password hashing with bcrypt
 - Role-based authorization (`user` and `admin`)
@@ -162,7 +163,7 @@ The API is available at `http://localhost:3000` by default.
 
 Base path: `http://localhost:3000/api/v1`
 
-Catalog **reads** are public so guests can browse without an account. Catalog **writes** require an admin JWT. Cart and address requests require any logged-in user JWT:
+Catalog **reads** are public so guests can browse without an account. Catalog **writes** require an admin JWT. Cart, address, and order requests require any logged-in user JWT. Admin order management requires an admin JWT:
 
 ```http
 Authorization: Bearer <access_token>
@@ -285,7 +286,39 @@ Create body example:
 
 `fullName`, `phone`, `city`, `district`, and `street` are required on create. `label`, `building`, `notes`, and `isDefault` are optional. Phone must be a Saudi number: `05XXXXXXXX` or `+9665XXXXXXXX`. `PATCH` accepts the same fields partially and rejects an empty body.
 
-An address that does not belong to the current user returns `404`. Deleting the default promotes the oldest remaining address. These addresses are for a later checkout flow; placing an order is not implemented yet.
+An address that does not belong to the current user returns `404`. Deleting the default promotes the oldest remaining address. Checkout copies the address onto the order, so deleting it later does not change past orders.
+
+### Orders
+
+Checkout turns the current cart into an order in one database transaction: it snapshots product prices and the shipping address, decrements stock, and clears cart items. Payment is cash on delivery only. A payment gateway is not implemented yet.
+
+A regular user token is enough for the customer endpoints. The first address or any owned `addressId` can be used.
+
+| Method | Endpoint | Access | Description |
+| :---: | --- | --- | --- |
+| `POST` | `/orders` | Authenticated | Place an order from the cart |
+| `GET` | `/orders` | Authenticated | List the current user's orders, newest first |
+| `GET` | `/orders/:orderId` | Authenticated | Get one of the current user's orders |
+| `PATCH` | `/orders/:orderId/cancel` | Authenticated | Cancel a `pending` order and restock |
+| `GET` | `/admin/orders` | Admin | List all orders |
+| `GET` | `/admin/orders/:orderId` | Admin | Get any order |
+| `PATCH` | `/admin/orders/:orderId/status` | Admin | Move the order to the next allowed status |
+
+Checkout body:
+
+```json
+{ "addressId": "<uuid>" }
+```
+
+Admin status body:
+
+```json
+{ "status": "confirmed" }
+```
+
+Allowed status flow: `pending → confirmed → shipped → delivered`. `pending` can be cancelled by the customer or an admin. `confirmed` can be cancelled by an admin. `shipped` and `delivered` cannot be cancelled. Delivered orders set `paymentStatus` to `paid`.
+
+Empty cart returns `400`. An address that is not the current user's returns `404`. Inactive products or quantity above stock return `400` and leave the cart unchanged. Another user's order returns `404`.
 
 ## 🗂️ Project structure
 
@@ -326,6 +359,7 @@ mindmap
       Products
       Cart
       Addresses
+      Orders
     HTTP
       routes
       protect
@@ -393,14 +427,17 @@ sequenceDiagram
 
 ### Data relationships
 
-One user has one cart and many shipping addresses. Cart items point at products. Product prices are read live; they are not stored on the cart item. Stock is checked on add, and decreased later at order time. One address per user is `default`.
+One user has one cart, many shipping addresses, and many orders. Cart items use live product prices. Checkout snapshots price and address onto the order, then decrements stock. One address per user is `default`.
 
 ```mermaid
 erDiagram
   USERS ||--o| CARTS : "one cart"
   USERS ||--o{ ADDRESSES : "up to 10"
+  USERS ||--o{ ORDERS : places
   CARTS ||--o{ CART_ITEMS : contains
   PRODUCTS ||--o{ CART_ITEMS : "live price"
+  ORDERS ||--o{ ORDER_ITEMS : contains
+  PRODUCTS ||--o{ ORDER_ITEMS : "price snapshot"
   CATEGORIES ||--o{ PRODUCTS : groups
   USERS {
     uuid id PK
@@ -423,6 +460,20 @@ erDiagram
     string phone
     boolean isDefault
   }
+  ORDERS {
+    uuid id PK
+    uuid user_id FK
+    string status
+    string paymentMethod
+    int total
+  }
+  ORDER_ITEMS {
+    uuid id PK
+    uuid order_id FK
+    uuid product_id FK
+    int unitPriceInMinorUnits
+    int quantity
+  }
   PRODUCTS {
     uuid id PK
     int priceInMinorUnits
@@ -444,15 +495,20 @@ flowchart LR
   User["Logged-in user"] --> Public
   User --> CartAPI["Cart APIs"]
   User --> AddressAPI["Address APIs"]
+  User --> OrderAPI["Order APIs"]
   User --> Me["GET /auth/me"]
   Admin["Admin"] --> Public
   Admin --> CartAPI
   Admin --> AddressAPI
+  Admin --> OrderAPI
+  Admin --> AdminOrders["Admin order APIs"]
   Admin --> Writes["Category and product writes"]
 
   Public --> Catalog["GET /categories<br/>GET /products"]
   CartAPI --> CartTables["carts + cart_items"]
   AddressAPI --> AddressTable["addresses"]
+  OrderAPI --> OrderTables["orders + order_items"]
+  AdminOrders --> OrderTables
   Writes --> CatalogTables["categories + products"]
 ```
 
@@ -469,13 +525,13 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 - [x] Authentication and authorization
 - [x] Shopping cart
 - [x] Shipping addresses
+- [x] COD checkout and order status
 - [ ] User profile management
 - [ ] Brands and subcategories
 - [ ] Product variants and advanced inventory
 - [ ] Product image upload and storage
 - [ ] Wishlist
 - [ ] Coupons and promotions
-- [ ] Orders and checkout flow
 - [ ] Payment gateway integration
 - [ ] Reviews and ratings
 - [ ] File and image storage
@@ -487,7 +543,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 
 ## 🧪 Explore with Postman
 
-Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, Cart, and Addresses requests. Cart and address examples use `{{token}}` from `Login`; a regular user token is enough.
+Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, Cart, Addresses, and Orders requests. Customer examples use `{{token}}` from `Login`. Admin order status updates need an admin token.
 
 ---
 
