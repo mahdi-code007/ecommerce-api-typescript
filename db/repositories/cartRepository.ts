@@ -1,9 +1,11 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { getPostgresDatabase } from "../../config/postgres";
+import * as variantRepository from "./variantRepository";
 import {
   cartItems,
   carts,
   products,
+  productVariants,
   type Cart,
   type CartItem,
 } from "../schema";
@@ -16,6 +18,15 @@ type CartProductSummary = {
   stock: number;
   image: string | null;
   isActive: boolean;
+  productType: "simple" | "variable";
+};
+
+type CartVariantSummary = {
+  id: string;
+  sku: string | null;
+  label: string;
+  priceInMinorUnits: number;
+  stock: number;
 };
 
 type CartItemView = {
@@ -23,6 +34,7 @@ type CartItemView = {
   quantity: number;
   lineTotal: number;
   product: CartProductSummary;
+  variant: CartVariantSummary | null;
 };
 
 type CartView = {
@@ -36,27 +48,6 @@ const emptyCartView = (): CartView => ({
   items: [],
   subtotal: 0,
 });
-
-const mapCartView = (
-  cartId: string,
-  rows: Array<{
-    item: CartItem;
-    product: CartProductSummary;
-  }>,
-): CartView => {
-  const items = rows.map((row) => ({
-    id: row.item.id,
-    quantity: row.item.quantity,
-    lineTotal: row.item.quantity * row.product.priceInMinorUnits,
-    product: row.product,
-  }));
-
-  return {
-    id: cartId,
-    items,
-    subtotal: items.reduce((total, item) => total + item.lineTotal, 0),
-  };
-};
 
 const findCartByUserId = async (
   userId: string,
@@ -121,19 +112,75 @@ const getCartViewByUserId = async (
         stock: products.stock,
         image: products.image,
         isActive: products.isActive,
+        productType: products.productType,
       },
+      variant: productVariants,
     })
     .from(cartItems)
     .innerJoin(products, eq(cartItems.productId, products.id))
+    .leftJoin(productVariants, eq(cartItems.variantId, productVariants.id))
     .where(eq(cartItems.cartId, cart.id))
     .orderBy(asc(cartItems.createdAt));
 
-  return mapCartView(cart.id, rows);
+  const variableIds = [
+    ...new Set(
+      rows
+        .filter((row) => row.item.variantId)
+        .map((row) => row.product.id),
+    ),
+  ];
+  const detailsByProductId = new Map<
+    string,
+    variantRepository.ProductOptionsAndVariants
+  >();
+
+  await Promise.all(
+    variableIds.map(async (productId) => {
+      detailsByProductId.set(
+        productId,
+        await variantRepository.loadOptionsAndVariants(productId),
+      );
+    }),
+  );
+
+  const items: CartItemView[] = rows.map((row) => {
+    const variantView = row.item.variantId
+      ? detailsByProductId
+          .get(row.product.id)
+          ?.variants.find((variant) => variant.id === row.item.variantId)
+      : undefined;
+    const unitPrice = variantView
+      ? variantView.priceInMinorUnits
+      : row.product.priceInMinorUnits;
+
+    return {
+      id: row.item.id,
+      quantity: row.item.quantity,
+      lineTotal: row.item.quantity * unitPrice,
+      product: row.product,
+      variant: variantView
+        ? {
+            id: variantView.id,
+            sku: variantView.sku,
+            label: variantView.label,
+            priceInMinorUnits: variantView.priceInMinorUnits,
+            stock: variantView.stock,
+          }
+        : null,
+    };
+  });
+
+  return {
+    id: cart.id,
+    items,
+    subtotal: items.reduce((total, item) => total + item.lineTotal, 0),
+  };
 };
 
 const findItemByProduct = async (
   cartId: string,
   productId: string,
+  variantId?: string,
 ): Promise<CartItem | null> => {
   const db = getPostgresDatabase();
 
@@ -144,6 +191,9 @@ const findItemByProduct = async (
       and(
         eq(cartItems.cartId, cartId),
         eq(cartItems.productId, productId),
+        variantId
+          ? eq(cartItems.variantId, variantId)
+          : isNull(cartItems.variantId),
       ),
     )
     .limit(1);
@@ -181,6 +231,7 @@ const insertCartItem = async (
   cartId: string,
   productId: string,
   quantity: number,
+  variantId?: string,
 ): Promise<CartItem> => {
   const db = getPostgresDatabase();
 
@@ -190,6 +241,7 @@ const insertCartItem = async (
       cartId,
       productId,
       quantity,
+      variantId: variantId ?? null,
     })
     .returning();
 
@@ -209,12 +261,21 @@ const insertCartItem = async (
 
 type AddOrIncreaseCartItemResult =
   | { ok: true }
-  | { ok: false; reason: "unavailable" | "out_of_stock" };
+  | {
+      ok: false;
+      reason:
+        | "unavailable"
+        | "out_of_stock"
+        | "variant_required"
+        | "no_variants"
+        | "variant_not_found";
+    };
 
 const addOrIncreaseCartItem = async (
   userId: string,
   productId: string,
   quantity: number,
+  variantId?: string,
 ): Promise<AddOrIncreaseCartItemResult> => {
   const db = getPostgresDatabase();
   const [product] = await db
@@ -230,33 +291,62 @@ const addOrIncreaseCartItem = async (
     };
   }
 
-  if (product.stock < 1) {
-    return {
-      ok: false,
-      reason: "out_of_stock",
-    };
+  if (product.productType === "simple") {
+    if (variantId) {
+      return { ok: false, reason: "no_variants" };
+    }
+
+    if (product.stock < 1) {
+      return { ok: false, reason: "out_of_stock" };
+    }
+
+    const cart = await getOrCreateCart(userId);
+    const existingItem = await findItemByProduct(cart.id, productId);
+    const nextQuantity = (existingItem?.quantity ?? 0) + quantity;
+
+    if (nextQuantity > product.stock) {
+      return { ok: false, reason: "out_of_stock" };
+    }
+
+    if (existingItem) {
+      await updateCartItemQuantity(existingItem.id, nextQuantity);
+    } else {
+      await insertCartItem(cart.id, productId, quantity);
+    }
+
+    return { ok: true };
+  }
+
+  if (!variantId) {
+    return { ok: false, reason: "variant_required" };
+  }
+
+  const details = await variantRepository.loadOptionsAndVariants(productId);
+  const variant = details.variants.find((item) => item.id === variantId);
+
+  if (!variant || !variant.isActive) {
+    return { ok: false, reason: "variant_not_found" };
+  }
+
+  if (variant.stock < 1) {
+    return { ok: false, reason: "out_of_stock" };
   }
 
   const cart = await getOrCreateCart(userId);
-  const existingItem = await findItemByProduct(cart.id, productId);
+  const existingItem = await findItemByProduct(cart.id, productId, variantId);
   const nextQuantity = (existingItem?.quantity ?? 0) + quantity;
 
-  if (nextQuantity > product.stock) {
-    return {
-      ok: false,
-      reason: "out_of_stock",
-    };
+  if (nextQuantity > variant.stock) {
+    return { ok: false, reason: "out_of_stock" };
   }
 
   if (existingItem) {
     await updateCartItemQuantity(existingItem.id, nextQuantity);
   } else {
-    await insertCartItem(cart.id, productId, quantity);
+    await insertCartItem(cart.id, productId, quantity, variantId);
   }
 
-  return {
-    ok: true,
-  };
+  return { ok: true };
 };
 
 const updateCartItemQuantity = async (
@@ -286,6 +376,37 @@ const updateCartItemQuantity = async (
     .where(eq(carts.id, item.cartId));
 
   return item;
+};
+
+const getAvailableStockForCartItem = async (
+  item: CartItem,
+): Promise<number | null> => {
+  const db = getPostgresDatabase();
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(eq(products.id, item.productId))
+    .limit(1);
+
+  if (!product || !product.isActive) {
+    return null;
+  }
+
+  if (product.productType === "simple") {
+    return product.stock;
+  }
+
+  if (!item.variantId) {
+    return null;
+  }
+
+  const variant = await variantRepository.findVariantById(item.variantId);
+
+  if (!variant || !variant.isActive || variant.productId !== product.id) {
+    return null;
+  }
+
+  return variant.stock;
 };
 
 const deleteCartItem = async (
@@ -356,18 +477,21 @@ const getCartLineItemsForCoupon = async (
     .select({
       productId: products.id,
       categoryId: products.categoryId,
-      priceInMinorUnits: products.priceInMinorUnits,
+      productPrice: products.priceInMinorUnits,
+      variantPrice: productVariants.priceInMinorUnits,
       quantity: cartItems.quantity,
     })
     .from(cartItems)
     .innerJoin(products, eq(cartItems.productId, products.id))
+    .leftJoin(productVariants, eq(cartItems.variantId, productVariants.id))
     .where(eq(cartItems.cartId, cart.id))
     .orderBy(asc(cartItems.createdAt));
 
   return rows.map((row) => ({
     productId: row.productId,
     categoryId: row.categoryId,
-    lineTotal: row.priceInMinorUnits * row.quantity,
+    lineTotal:
+      (row.variantPrice ?? row.productPrice) * row.quantity,
   }));
 };
 
@@ -375,6 +499,7 @@ export {
   getOrCreateCart,
   getCartViewByUserId,
   getCartLineItemsForCoupon,
+  getAvailableStockForCartItem,
   findItemByProduct,
   findItemInUserCart,
   insertCartItem,

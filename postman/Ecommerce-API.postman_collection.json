@@ -77,6 +77,18 @@
       "value": "",
       "type": "string",
       "description": "Saved automatically after a successful Create Brand request."
+    },
+    {
+      "key": "variableProductId",
+      "value": "",
+      "type": "string",
+      "description": "Saved automatically after a successful Create Variable Product request."
+    },
+    {
+      "key": "variantId",
+      "value": "",
+      "type": "string",
+      "description": "Saved automatically after creating a variable product or adding a variant."
     }
   ],
   "item": [
@@ -765,7 +777,158 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "products"]
             },
-            "description": "Admin only. Creates a product and saves `id` to `productId`.\n\n### Fields\n- `name`: required, 3–100 characters.\n- `description`: optional, max 2000 characters.\n- `priceInMinorUnits`: required, integer greater than zero. Example: `125075` means `1250.75` in the currency.\n- `stock`: required, integer starting from zero.\n- `categoryId`: required, ID of an existing category.\n- `image`: optional.\n- `isActive`: optional, default `true`.\n\n### Server-owned fields\n- `slug`\n- `ratingAverage`: starts at zero.\n- `ratingsCount`: starts at zero."
+            "description": "Admin only. Creates a **simple** product (price and stock on the product row) and saves `id` to `productId`.\n\n### Fields\n- `name`: required, 3–100 characters.\n- `description`: optional, max 2000 characters.\n- `productType`: optional, default `simple`.\n- `priceInMinorUnits`: required for simple products, integer greater than zero. Example: `125075` means `1250.75` in the currency.\n- `stock`: required for simple products, integer starting from zero.\n- `categoryId`: required, ID of an existing category.\n- `image`: optional.\n- `isActive`: optional, default `true`.\n\n### Server-owned fields\n- `slug`\n- `ratingAverage`: starts at zero.\n- `ratingsCount`: starts at zero."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Variable Product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const product = json.data?.product;",
+                  "if (product?.id) {",
+                  "  pm.collectionVariables.set('variableProductId', product.id);",
+                  "}",
+                  "const variant = product?.variants?.[0];",
+                  "if (variant?.id) {",
+                  "  pm.collectionVariables.set('variantId', variant.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Variable Phone {{$timestamp}}\",\n  \"productType\": \"variable\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"options\": [\n    { \"name\": \"Color\", \"values\": [\"Black\", \"Blue\"] },\n    { \"name\": \"Size\", \"values\": [\"128GB\", \"256GB\"] }\n  ],\n  \"variants\": [\n    {\n      \"optionValues\": { \"Color\": \"Black\", \"Size\": \"128GB\" },\n      \"priceInMinorUnits\": 25000,\n      \"stock\": 5,\n      \"sku\": \"PM-BLK-128-{{$timestamp}}\"\n    },\n    {\n      \"optionValues\": { \"Color\": \"Black\", \"Size\": \"256GB\" },\n      \"priceInMinorUnits\": 32000,\n      \"stock\": 2,\n      \"sku\": \"PM-BLK-256-{{$timestamp}}\"\n    },\n    {\n      \"optionValues\": { \"Color\": \"Blue\", \"Size\": \"128GB\" },\n      \"priceInMinorUnits\": 26000,\n      \"stock\": 3,\n      \"sku\": \"PM-BLU-128-{{$timestamp}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "products"]
+            },
+            "description": "Admin only. Creates a **variable** product with Color + Size and three variants. Catalog `priceInMinorUnits` is the lowest active variant price; `stock` is the sum of active variant stock.\n\nSaves `variableProductId` and the first `variantId`.\n\n`variantId` is required when adding this product to the cart."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Product By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/products/{{variableProductId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "products", "{{variableProductId}}"]
+            },
+            "description": "Public. Returns one product. Variable products include `options` and full `variants` for the product page. List responses set `variants` to `null`."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Variant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data?.variant?.id) {",
+                  "  pm.collectionVariables.set('variantId', json.data.variant.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"optionValues\": { \"Color\": \"Blue\", \"Size\": \"256GB\" },\n  \"priceInMinorUnits\": 33000,\n  \"stock\": 1,\n  \"sku\": \"PM-BLU-256-{{$timestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/products/{{variableProductId}}/variants",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "products", "{{variableProductId}}", "variants"]
+            },
+            "description": "Admin only. Adds a variant to a variable product. Duplicate option combination or SKU returns `409`."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Duplicate SKU Variant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"optionValues\": { \"Color\": \"Black\", \"Size\": \"128GB\" },\n  \"priceInMinorUnits\": 25000,\n  \"stock\": 1,\n  \"sku\": \"DUPLICATE-SKU\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/products/{{variableProductId}}/variants",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "products", "{{variableProductId}}", "variants"]
+            },
+            "description": "Expected `409` when the SKU or option combination already exists. Set `sku` to an existing variant SKU first."
           },
           "response": []
         },
@@ -1192,7 +1355,123 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "cart", "items"]
             },
-            "description": "Adds a product to the cart. The cart row is created on the first add.\n\nIf the product is already in the cart, the quantity is increased instead of inserting a second row.\n\n- First add: `201`.\n- Same product again: `200`.\n- Missing product or inactive product: `404`.\n- Quantity greater than stock: `400`.\n- Missing token: `401`."
+            "description": "Adds a **simple** product to the cart. Do not send `variantId`.\n\nIf the product is already in the cart, the quantity is increased instead of inserting a second row.\n\n- First add: `201`.\n- Same product again: `200`.\n- Missing product or inactive product: `404`.\n- Quantity greater than stock: `400`.\n- `variantId` on a simple product: `400`.\n- Missing token: `401`."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Variable Cart Item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const item = json.data?.cart?.items?.find((row) => row.variant?.id === pm.collectionVariables.get('variantId'))",
+                  "  || json.data?.cart?.items?.[0];",
+                  "if (item?.id) {",
+                  "  pm.collectionVariables.set('cartItemId', item.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{variableProductId}}\",\n  \"quantity\": 1,\n  \"variantId\": \"{{variantId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cart/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cart", "items"]
+            },
+            "description": "Adds a variable product. `variantId` is required. Checkout snapshots `variantLabel` and decrements variant stock."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Variable Without VariantId",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{variableProductId}}\",\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cart/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cart", "items"]
+            },
+            "description": "Expected `400`. Variable products require `variantId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Simple With VariantId",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1,\n  \"variantId\": \"{{variantId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cart/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cart", "items"]
+            },
+            "description": "Expected `400`. Simple products have no variants."
           },
           "response": []
         },

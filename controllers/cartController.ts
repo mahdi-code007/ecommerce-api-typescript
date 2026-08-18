@@ -4,7 +4,6 @@ import type {
   Response,
 } from "express";
 import * as cartRepository from "../db/repositories/cartRepository";
-import * as productRepository from "../db/repositories/productRepository";
 import type {
   AddCartItemRequest,
   CartItemByIdRequest,
@@ -21,22 +20,27 @@ const getAuthenticatedUserId = (req: Request): string => {
   return req.user.id;
 };
 
-const assertQuantityWithinStock = (
-  quantity: number,
-  stock: number,
-  next: NextFunction,
-): boolean => {
-  if (quantity > stock) {
-    next(
-      new AppError(
-        "Requested quantity exceeds available stock",
-        400,
-      ),
-    );
-    return false;
+const mapAddCartError = (
+  reason: Extract<
+    cartRepository.AddOrIncreaseCartItemResult,
+    { ok: false }
+  >["reason"],
+): { message: string; statusCode: number } => {
+  switch (reason) {
+    case "unavailable":
+      return { message: "Product not found", statusCode: 404 };
+    case "out_of_stock":
+      return {
+        message: "Requested quantity exceeds available stock",
+        statusCode: 400,
+      };
+    case "variant_required":
+      return { message: "Variant is required", statusCode: 400 };
+    case "no_variants":
+      return { message: "This product has no variants", statusCode: 400 };
+    case "variant_not_found":
+      return { message: "Variant not found", statusCode: 404 };
   }
-
-  return true;
 };
 
 // @desc Get the current user's cart
@@ -65,45 +69,30 @@ export const addCartItem = async (
 ): Promise<void> => {
   const userId = getAuthenticatedUserId(req);
   const { body } = getValidated<AddCartItemRequest>(req);
-  const product = await productRepository.findProductById(body.productId);
-
-  if (!product || !product.isActive) {
-    next(new AppError("Product not found", 404));
-    return;
-  }
-
-  const cart = await cartRepository.getOrCreateCart(userId);
-  const existingItem = await cartRepository.findItemByProduct(
-    cart.id,
+  const existingCart = await cartRepository.getCartViewByUserId(userId);
+  const existingCount = existingCart.items.length;
+  const result = await cartRepository.addOrIncreaseCartItem(
+    userId,
     body.productId,
+    body.quantity,
+    body.variantId,
   );
-  const nextQuantity = (existingItem?.quantity ?? 0) + body.quantity;
 
-  if (!assertQuantityWithinStock(nextQuantity, product.stock, next)) {
+  if (!result.ok) {
+    const error = mapAddCartError(result.reason);
+    next(new AppError(error.message, error.statusCode));
     return;
   }
 
-  if (existingItem) {
-    await cartRepository.updateCartItemQuantity(
-      existingItem.id,
-      nextQuantity,
-    );
-  } else {
-    await cartRepository.insertCartItem(
-      cart.id,
-      body.productId,
-      body.quantity,
-    );
-  }
+  const cart = await cartRepository.getCartViewByUserId(userId);
+  const created = cart.items.length > existingCount;
 
-  const updatedCart = await cartRepository.getCartViewByUserId(userId);
-
-  res.status(existingItem ? 200 : 201).json({
+  res.status(created ? 201 : 200).json({
     status: "success",
-    data: { cart: updatedCart },
-    message: existingItem
-      ? "Cart item quantity updated"
-      : "Product added to cart",
+    data: { cart },
+    message: created
+      ? "Product added to cart"
+      : "Cart item quantity updated",
   });
 };
 
@@ -124,14 +113,20 @@ export const updateCartItem = async (
     return;
   }
 
-  const product = await productRepository.findProductById(item.productId);
+  const stock = await cartRepository.getAvailableStockForCartItem(item);
 
-  if (!product || !product.isActive) {
+  if (stock === null) {
     next(new AppError("Product not found", 404));
     return;
   }
 
-  if (!assertQuantityWithinStock(body.quantity, product.stock, next)) {
+  if (body.quantity > stock) {
+    next(
+      new AppError(
+        "Requested quantity exceeds available stock",
+        400,
+      ),
+    );
     return;
   }
 

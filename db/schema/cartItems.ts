@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { carts } from "./carts";
 import { products } from "./products";
+import { productVariants } from "./productVariants";
 
 export const cartItems = pgTable(
   "cart_items",
@@ -29,6 +30,10 @@ export const cartItems = pgTable(
         onDelete: "restrict",
       }),
 
+    variantId: uuid("variant_id").references(() => productVariants.id, {
+      onDelete: "restrict",
+    }),
+
     quantity: integer("quantity")
       .notNull(),
 
@@ -45,10 +50,12 @@ export const cartItems = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("cart_items_cart_id_product_id_unique").on(
-      table.cartId,
-      table.productId,
-    ),
+    uniqueIndex("cart_items_cart_id_product_id_simple_unique")
+      .on(table.cartId, table.productId)
+      .where(sql`${table.variantId} is null`),
+    uniqueIndex("cart_items_cart_id_product_id_variant_id_unique")
+      .on(table.cartId, table.productId, table.variantId)
+      .where(sql`${table.variantId} is not null`),
     check(
       "cart_items_quantity_positive",
       sql`${table.quantity} >= 1`,

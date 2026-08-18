@@ -14,17 +14,29 @@ import {
 import slugify from "slugify";
 import { getPostgresDatabase } from "../../config/postgres";
 import * as categoryRepository from "./categoryRepository";
-import { brands, categories, products, type Product } from "../schema";
+import * as variantRepository from "./variantRepository";
+import {
+  brands,
+  categories,
+  orderItems,
+  productVariants,
+  products,
+  type Product,
+  type ProductType,
+} from "../schema";
 
 type CreateProductInput = {
   name: string;
   description?: string;
-  priceInMinorUnits: number;
-  stock: number;
+  productType?: ProductType;
+  priceInMinorUnits?: number;
+  stock?: number;
   categoryId: string;
   brandId?: string | null;
   image?: string;
   isActive?: boolean;
+  options?: variantRepository.OptionInput[];
+  variants?: variantRepository.VariantInput[];
 };
 
 type UpdateProductInput = {
@@ -72,6 +84,9 @@ type ProductBrandSummary = {
 type ProductWithCategoryAndBrand = Product & {
   category: ProductCategorySummary;
   brand: ProductBrandSummary | null;
+  priceMaxInMinorUnits: number;
+  options: variantRepository.OptionSummary[];
+  variants: variantRepository.VariantView[] | null;
 };
 
 type FindAllProductsResult = {
@@ -103,14 +118,25 @@ const buildSlug = (name: string): string =>
 const escapeIlikePattern = (value: string): string =>
   value.replace(/[%_\\]/g, "\\$&");
 
-const mapProductWithRelations = (row: {
-  product: Product;
-  category: ProductCategorySummary;
-  brand: ProductBrandSummary | null;
-}): ProductWithCategoryAndBrand => ({
+const mapProductWithRelations = (
+  row: {
+    product: Product;
+    category: ProductCategorySummary;
+    brand: ProductBrandSummary | null;
+  },
+  extras?: {
+    priceMaxInMinorUnits?: number;
+    options?: variantRepository.OptionSummary[];
+    variants?: variantRepository.VariantView[] | null;
+  },
+): ProductWithCategoryAndBrand => ({
   ...row.product,
   category: row.category,
   brand: row.brand?.id ? row.brand : null,
+  priceMaxInMinorUnits:
+    extras?.priceMaxInMinorUnits ?? row.product.priceInMinorUnits,
+  options: extras?.options ?? [],
+  variants: extras?.variants ?? null,
 });
 
 const getSortColumns = (sort: ProductSort) => {
@@ -189,6 +215,9 @@ const buildCatalogFilters = ({
 
 const findProductById = async (
   id: string,
+  options?: {
+    includeVariants?: boolean;
+  },
 ): Promise<ProductWithCategoryAndBrand | null> => {
   const db = getPostgresDatabase();
 
@@ -200,13 +229,85 @@ const findProductById = async (
     .where(eq(products.id, id))
     .limit(1);
 
-  return row ? mapProductWithRelations(row) : null;
+  if (!row) {
+    return null;
+  }
+
+  if (row.product.productType !== "variable") {
+    return mapProductWithRelations(row, {
+      priceMaxInMinorUnits: row.product.priceInMinorUnits,
+      options: [],
+      variants: null,
+    });
+  }
+
+  const details = await variantRepository.loadOptionsAndVariants(id);
+  const maxPrices = await variantRepository.loadMaxPricesByProductIds([id]);
+
+  return mapProductWithRelations(row, {
+    priceMaxInMinorUnits:
+      maxPrices.get(id) ?? row.product.priceInMinorUnits,
+    options: details.optionSummaries,
+    variants: options?.includeVariants ? details.variants : null,
+  });
 };
 
 const createProduct = async (
   input: CreateProductInput,
 ): Promise<ProductWithCategoryAndBrand> => {
   const db = getPostgresDatabase();
+  const productType = input.productType ?? "simple";
+
+  if (productType === "variable") {
+    if (!input.options || !input.variants) {
+      throw new Error("invalid_options");
+    }
+
+    const createdId = await db.transaction(async (tx) => {
+      const firstVariant = input.variants?.[0];
+
+      const [created] = await tx
+        .insert(products)
+        .values({
+          name: input.name,
+          slug: buildSlug(input.name),
+          description: input.description,
+          productType,
+          priceInMinorUnits: firstVariant?.priceInMinorUnits ?? 1,
+          stock: 0,
+          categoryId: input.categoryId,
+          brandId: input.brandId ?? null,
+          image: input.image,
+          isActive: input.isActive,
+        })
+        .returning({
+          id: products.id,
+        });
+
+      if (!created) {
+        throw new Error("Failed to create product");
+      }
+
+      await variantRepository.createOptionsAndVariants(
+        tx,
+        created.id,
+        input.options ?? [],
+        input.variants ?? [],
+      );
+
+      return created.id;
+    });
+
+    const product = await findProductById(createdId, {
+      includeVariants: true,
+    });
+
+    if (!product) {
+      throw new Error("Failed to load created product");
+    }
+
+    return product;
+  }
 
   const [created] = await db
     .insert(products)
@@ -214,8 +315,9 @@ const createProduct = async (
       name: input.name,
       slug: buildSlug(input.name),
       description: input.description,
-      priceInMinorUnits: input.priceInMinorUnits,
-      stock: input.stock,
+      productType: "simple",
+      priceInMinorUnits: input.priceInMinorUnits ?? 1,
+      stock: input.stock ?? 0,
       categoryId: input.categoryId,
       brandId: input.brandId ?? null,
       image: input.image,
@@ -276,9 +378,41 @@ const findAllProducts = async (
     .offset(offset);
 
   return {
-    products: rows.map(mapProductWithRelations),
+    products: await attachCatalogExtras(rows.map((row) => mapProductWithRelations(row))),
     total: totalResult?.total ?? 0,
   };
+};
+
+const attachCatalogExtras = async (
+  catalogProducts: ProductWithCategoryAndBrand[],
+): Promise<ProductWithCategoryAndBrand[]> => {
+  const variableIds = catalogProducts
+    .filter((product) => product.productType === "variable")
+    .map((product) => product.id);
+
+  const [optionSummaries, maxPrices] = await Promise.all([
+    variantRepository.loadOptionSummariesByProductIds(variableIds),
+    variantRepository.loadMaxPricesByProductIds(variableIds),
+  ]);
+
+  return catalogProducts.map((product) => {
+    if (product.productType !== "variable") {
+      return {
+        ...product,
+        priceMaxInMinorUnits: product.priceInMinorUnits,
+        options: [],
+        variants: null,
+      };
+    }
+
+    return {
+      ...product,
+      priceMaxInMinorUnits:
+        maxPrices.get(product.id) ?? product.priceInMinorUnits,
+      options: optionSummaries.get(product.id) ?? [],
+      variants: null,
+    };
+  });
 };
 
 const updateProductById = async (
@@ -338,20 +472,58 @@ const updateProductById = async (
     return null;
   }
 
-  return findProductById(updated.id);
+  return findProductById(updated.id, {
+    includeVariants: true,
+  });
 };
+
+type DeleteProductResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" | "in_use" };
 
 const deleteProductById = async (
   id: string,
-): Promise<Product | null> => {
+): Promise<DeleteProductResult> => {
   const db = getPostgresDatabase();
-
   const [product] = await db
-    .delete(products)
+    .select()
+    .from(products)
     .where(eq(products.id, id))
-    .returning();
+    .limit(1);
 
-  return product ?? null;
+  if (!product) {
+    return { ok: false, reason: "not_found" };
+  }
+
+  if (product.productType === "variable") {
+    const variants = await db
+      .select({
+        id: productVariants.id,
+      })
+      .from(productVariants)
+      .where(eq(productVariants.productId, id));
+
+    const variantIds = variants.map((variant) => variant.id);
+
+    if (variantIds.length > 0) {
+      const [usage] = await db
+        .select({ total: count() })
+        .from(orderItems)
+        .where(inArray(orderItems.variantId, variantIds));
+
+      if ((usage?.total ?? 0) > 0) {
+        return { ok: false, reason: "in_use" };
+      }
+
+      await db
+        .delete(productVariants)
+        .where(inArray(productVariants.id, variantIds));
+    }
+  }
+
+  await db.delete(products).where(eq(products.id, id));
+
+  return { ok: true };
 };
 
 const countProductsByCategoryId = async (
@@ -395,4 +567,5 @@ export type {
   FindAllProductsResult,
   ProductWithCategoryAndBrand,
   ProductSort,
+  DeleteProductResult,
 };

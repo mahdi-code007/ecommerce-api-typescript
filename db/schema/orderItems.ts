@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { orders } from "./orders";
 import { products } from "./products";
+import { productVariants } from "./productVariants";
 
 export const orderItems = pgTable(
   "order_items",
@@ -29,9 +30,21 @@ export const orderItems = pgTable(
         onDelete: "restrict",
       }),
 
+    variantId: uuid("variant_id").references(() => productVariants.id, {
+      onDelete: "restrict",
+    }),
+
     productName: varchar("product_name", {
       length: 100,
     }).notNull(),
+
+    sku: varchar("sku", {
+      length: 64,
+    }),
+
+    variantLabel: varchar("variant_label", {
+      length: 200,
+    }),
 
     unitPriceInMinorUnits: integer("unit_price_in_minor_units")
       .notNull(),

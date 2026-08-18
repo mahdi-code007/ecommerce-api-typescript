@@ -11,10 +11,36 @@ export {
 } from "./brands";
 
 export {
+  productTypeEnum,
   products,
   type Product,
   type NewProduct,
+  type ProductType,
 } from "./products";
+
+export {
+  productOptions,
+  type ProductOption,
+  type NewProductOption,
+} from "./productOptions";
+
+export {
+  productOptionValues,
+  type ProductOptionValue,
+  type NewProductOptionValue,
+} from "./productOptionValues";
+
+export {
+  productVariants,
+  type ProductVariant,
+  type NewProductVariant,
+} from "./productVariants";
+
+export {
+  productVariantValues,
+  type ProductVariantValue,
+  type NewProductVariantValue,
+} from "./productVariantValues";
 
 export {
   userRoleEnum,

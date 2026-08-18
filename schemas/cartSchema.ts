@@ -25,6 +25,11 @@ const quantitySchema = z
 const addCartItemSchema = z.strictObject({
   productId: productIdSchema,
   quantity: quantitySchema,
+  variantId: z
+    .uuid({
+      error: "Invalid variant id",
+    })
+    .optional(),
 });
 
 const addCartItemRequestSchema = z.object({

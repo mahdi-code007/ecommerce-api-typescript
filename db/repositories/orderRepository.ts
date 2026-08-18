@@ -9,11 +9,13 @@ import {
   orderItems,
   orders,
   products,
+  productVariants,
   type Address,
   type Order,
   type OrderItem,
   type OrderStatus,
 } from "../schema";
+import * as variantRepository from "./variantRepository";
 
 type ShippingAddressSnapshot = {
   fullName: string;
@@ -30,6 +32,9 @@ type OrderItemView = {
   id: string;
   productId: string;
   productName: string;
+  variantId: string | null;
+  sku: string | null;
+  variantLabel: string | null;
   unitPriceInMinorUnits: number;
   quantity: number;
   lineTotal: number;
@@ -108,6 +113,9 @@ const mapOrderItemView = (item: OrderItem): OrderItemView => ({
   id: item.id,
   productId: item.productId,
   productName: item.productName,
+  variantId: item.variantId,
+  sku: item.sku,
+  variantLabel: item.variantLabel,
   unitPriceInMinorUnits: item.unitPriceInMinorUnits,
   quantity: item.quantity,
   lineTotal: item.lineTotal,
@@ -161,7 +169,22 @@ const restockOrderItems = async (
   tx: ReturnType<typeof getPostgresDatabase>,
   items: OrderItem[],
 ): Promise<void> => {
+  const variableProductIds = new Set<string>();
+
   for (const item of items) {
+    if (item.variantId) {
+      await tx
+        .update(productVariants)
+        .set({
+          stock: sql`${productVariants.stock} + ${item.quantity}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(productVariants.id, item.variantId));
+
+      variableProductIds.add(item.productId);
+      continue;
+    }
+
     await tx
       .update(products)
       .set({
@@ -169,6 +192,10 @@ const restockOrderItems = async (
         updatedAt: new Date(),
       })
       .where(eq(products.id, item.productId));
+  }
+
+  for (const productId of variableProductIds) {
+    await variantRepository.syncVariableProductCatalogCache(tx, productId);
   }
 };
 
@@ -232,6 +259,13 @@ const placeOrder = async (
     }
 
     const productIds = [...new Set(cartRows.map((row) => row.product.id))].sort();
+    const variantIds = [
+      ...new Set(
+        cartRows
+          .map((row) => row.item.variantId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ].sort();
 
     await tx
       .select({
@@ -242,6 +276,17 @@ const placeOrder = async (
       .orderBy(asc(products.id))
       .for("update");
 
+    if (variantIds.length > 0) {
+      await tx
+        .select({
+          id: productVariants.id,
+        })
+        .from(productVariants)
+        .where(inArray(productVariants.id, variantIds))
+        .orderBy(asc(productVariants.id))
+        .for("update");
+    }
+
     const lockedProducts = await tx
       .select()
       .from(products)
@@ -251,10 +296,60 @@ const placeOrder = async (
       lockedProducts.map((product) => [product.id, product]),
     );
 
+    const lockedVariants = variantIds.length > 0
+      ? await tx
+          .select()
+          .from(productVariants)
+          .where(inArray(productVariants.id, variantIds))
+      : [];
+
+    const variantById = new Map(
+      lockedVariants.map((variant) => [variant.id, variant]),
+    );
+
+    const variantDetailsByProductId = new Map<
+      string,
+      variantRepository.ProductOptionsAndVariants
+    >();
+
+    for (const productId of productIds) {
+      const product = productById.get(productId);
+
+      if (product?.productType === "variable") {
+        variantDetailsByProductId.set(
+          productId,
+          await variantRepository.loadOptionsAndVariants(productId, tx),
+        );
+      }
+    }
+
     for (const row of cartRows) {
       const product = productById.get(row.item.productId);
 
-      if (!product || !product.isActive || product.stock < row.item.quantity) {
+      if (!product || !product.isActive) {
+        return { ok: false, reason: "unavailable" };
+      }
+
+      if (product.productType === "simple") {
+        if (row.item.variantId || product.stock < row.item.quantity) {
+          return { ok: false, reason: "unavailable" };
+        }
+
+        continue;
+      }
+
+      if (!row.item.variantId) {
+        return { ok: false, reason: "unavailable" };
+      }
+
+      const variant = variantById.get(row.item.variantId);
+
+      if (
+        !variant ||
+        variant.productId !== product.id ||
+        !variant.isActive ||
+        variant.stock < row.item.quantity
+      ) {
         return { ok: false, reason: "unavailable" };
       }
     }
@@ -266,11 +361,23 @@ const placeOrder = async (
         throw new Error("Locked product missing");
       }
 
-      const unitPriceInMinorUnits = product.priceInMinorUnits;
+      const variant = row.item.variantId
+        ? variantById.get(row.item.variantId)
+        : undefined;
+      const variantView = row.item.variantId
+        ? variantDetailsByProductId
+            .get(product.id)
+            ?.variants.find((item) => item.id === row.item.variantId)
+        : undefined;
+      const unitPriceInMinorUnits =
+        variant?.priceInMinorUnits ?? product.priceInMinorUnits;
 
       return {
         productId: product.id,
         categoryId: product.categoryId,
+        variantId: row.item.variantId,
+        sku: variant?.sku ?? null,
+        variantLabel: variantView?.label ?? null,
         productName: product.name,
         unitPriceInMinorUnits,
         quantity: row.item.quantity,
@@ -365,12 +472,46 @@ const placeOrder = async (
       .values(
         lineItems.map((item) => ({
           orderId: order.id,
-          ...item,
+          productId: item.productId,
+          variantId: item.variantId,
+          productName: item.productName,
+          sku: item.sku,
+          variantLabel: item.variantLabel,
+          unitPriceInMinorUnits: item.unitPriceInMinorUnits,
+          quantity: item.quantity,
+          lineTotal: item.lineTotal,
         })),
       )
       .returning();
 
+    const variableProductIds = new Set<string>();
+
     for (const item of lineItems) {
+      if (item.variantId) {
+        const [updatedVariant] = await tx
+          .update(productVariants)
+          .set({
+            stock: sql`${productVariants.stock} - ${item.quantity}`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(productVariants.id, item.variantId),
+              gte(productVariants.stock, item.quantity),
+            ),
+          )
+          .returning({
+            id: productVariants.id,
+          });
+
+        if (!updatedVariant) {
+          throw new CheckoutUnavailableError();
+        }
+
+        variableProductIds.add(item.productId);
+        continue;
+      }
+
       const [updatedProduct] = await tx
         .update(products)
         .set({
@@ -390,6 +531,10 @@ const placeOrder = async (
       if (!updatedProduct) {
         throw new CheckoutUnavailableError();
       }
+    }
+
+    for (const productId of variableProductIds) {
+      await variantRepository.syncVariableProductCatalogCache(tx, productId);
     }
 
     await tx
@@ -634,6 +779,7 @@ const updateOrderStatus = async (
 type SkippedReorderItem = {
   productId: string;
   productName: string;
+  variantId?: string | null;
   reason: "unavailable" | "out_of_stock";
 };
 
@@ -662,13 +808,16 @@ const reorderOrderToCart = async (
       userId,
       item.productId,
       item.quantity,
+      item.variantId ?? undefined,
     );
 
     if (!result.ok) {
       skipped.push({
         productId: item.productId,
         productName: item.productName,
-        reason: result.reason,
+        variantId: item.variantId,
+        reason:
+          result.reason === "out_of_stock" ? "out_of_stock" : "unavailable",
       });
       continue;
     }

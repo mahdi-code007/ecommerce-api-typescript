@@ -1,9 +1,13 @@
 import { Router } from "express";
 import {
   createProduct,
+  createVariant,
   deleteProduct,
+  deleteVariant,
   getAllProducts,
+  getProduct,
   updateProduct,
+  updateVariant,
 } from "../controllers/productController";
 import {
   createReview,
@@ -14,9 +18,12 @@ import { protect, restrictTo } from "../middlewares/auth";
 import validate = require("../middlewares/validate");
 import {
   createProductRequestSchema,
+  createVariantRequestSchema,
   getProductsRequestSchema,
   productByIdRequestSchema,
   updateProductRequestSchema,
+  updateVariantRequestSchema,
+  variantByIdRequestSchema,
 } from "../schemas/productSchema";
 import {
   createReviewRequestSchema,
@@ -59,8 +66,36 @@ router.patch(
   updateMyReview,
 );
 
+router.post(
+  "/:id/variants",
+  protect,
+  restrictTo("admin"),
+  validate(createVariantRequestSchema),
+  createVariant,
+);
+
+router.patch(
+  "/:id/variants/:variantId",
+  protect,
+  restrictTo("admin"),
+  validate(updateVariantRequestSchema),
+  updateVariant,
+);
+
+router.delete(
+  "/:id/variants/:variantId",
+  protect,
+  restrictTo("admin"),
+  validate(variantByIdRequestSchema),
+  deleteVariant,
+);
+
 router
   .route("/:id")
+  .get(
+    validate(productByIdRequestSchema),
+    getProduct,
+  )
   .patch(
     protect,
     restrictTo("admin"),

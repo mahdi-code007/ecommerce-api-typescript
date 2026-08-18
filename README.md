@@ -263,12 +263,18 @@ A brand with associated products cannot be deleted. The API returns `409 Conflic
 
 ### Products
 
+Products are either `simple` or `variable`. Simple products keep price and stock on the product row (the previous behavior). Variable products are not purchased directly: each variant has its own price, stock, and optional SKU. Wishlist, favorites, reviews, and product-scoped coupons stay on the parent product.
+
 | Method | Endpoint | Access | Description |
 | :---: | --- | --- | --- |
 | `GET` | `/products` | Public | Search, filter, sort, and paginate active products |
-| `POST` | `/products` | Admin | Create a product linked to an existing category |
-| `PATCH` | `/products/:id` | Admin | Update a product or move it to another category |
+| `GET` | `/products/:id` | Public | Get one active product; variable products include `variants` |
+| `POST` | `/products` | Admin | Create a simple or variable product |
+| `PATCH` | `/products/:id` | Admin | Update a product (not variant price/stock) |
 | `DELETE` | `/products/:id` | Admin | Delete a product |
+| `POST` | `/products/:id/variants` | Admin | Add a variant |
+| `PATCH` | `/products/:id/variants/:variantId` | Admin | Update variant price, stock, SKU, or `isActive` |
+| `DELETE` | `/products/:id/variants/:variantId` | Admin | Delete a variant if unused |
 | `GET` | `/products/:id/reviews` | Public | List reviews for a product |
 | `POST` | `/products/:id/reviews` | Authenticated | Review a product from a delivered order |
 | `PATCH` | `/products/:id/reviews/me` | Authenticated | Update the current user's review |
@@ -294,6 +300,43 @@ GET /api/v1/products?search=phone&categoryId=58b9c274-6727-4ad8-921e-8b235bcb69f
 ```
 
 Product prices are stored in `priceInMinorUnits` as integers—for example, `125075` represents `1250.75` in the selected currency.
+
+For a variable product, catalog `priceInMinorUnits` is the lowest active variant price, `priceMaxInMinorUnits` is the highest, and `stock` is the sum of active variant stock. List responses include option names/values and set `variants` to `null`. `GET /products/:id` returns the full variant list for the product page.
+
+Simple create body:
+
+```json
+{
+  "name": "Coffee mug",
+  "priceInMinorUnits": 2500,
+  "stock": 20,
+  "categoryId": "<uuid>"
+}
+```
+
+Variable create body:
+
+```json
+{
+  "name": "Galaxy Phone",
+  "productType": "variable",
+  "categoryId": "<uuid>",
+  "options": [
+    { "name": "Color", "values": ["Black", "Blue"] },
+    { "name": "Storage", "values": ["128GB", "256GB"] }
+  ],
+  "variants": [
+    {
+      "optionValues": { "Color": "Black", "Storage": "128GB" },
+      "priceInMinorUnits": 25000,
+      "stock": 5,
+      "sku": "GAL-BLK-128"
+    }
+  ]
+}
+```
+
+A variable product may have up to 3 options, 20 values per option, and 100 variants. Deleting a variant that appears on an order returns `409`; deactivate it instead. A variable product must keep at least one variant.
 
 Product responses populate the related category (`id`, `name`, `slug`, `parentId`) and optional brand (`id`, `name`, `slug`, or `null`). Rating fields are controlled by the server: they change when a customer reviews a product after a delivered order.
 
@@ -322,12 +365,12 @@ A regular user token is enough. The cart is created on the first add, not on `GE
 Add and update bodies use:
 
 ```json
-{ "productId": "<uuid>", "quantity": 2 }
+{ "productId": "<uuid>", "quantity": 2, "variantId": "<uuid>" }
 ```
 
-`PATCH` accepts `quantity` only. If the user has never added an item, `GET /cart` returns `{ "id": null, "items": [], "subtotal": 0 }` without inserting a cart row.
+`variantId` is required for variable products and forbidden for simple products. `PATCH` accepts `quantity` only. If the user has never added an item, `GET /cart` returns `{ "id": null, "items": [], "subtotal": 0 }` without inserting a cart row.
 
-Cart prices are read live from `products`. Item totals and `subtotal` use `priceInMinorUnits`. Missing or inactive products return `404`. Quantity greater than stock returns `400`. An item that does not belong to the current user's cart returns `404`.
+Cart prices are read live from the product (simple) or the variant (variable). Item totals and `subtotal` use `priceInMinorUnits`. Missing or inactive products/variants return `404`. Quantity greater than stock returns `400`. An item that does not belong to the current user's cart returns `404`.
 
 ### Wishlist
 
@@ -755,7 +798,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 - [x] COD checkout and order status
 - [x] User profile management
 - [x] Brands and subcategories
-- [ ] Product variants and advanced inventory
+- [x] Product variants and advanced inventory
 - [ ] Product image upload and storage
 - [x] Wishlist
 - [x] Coupons and promotions

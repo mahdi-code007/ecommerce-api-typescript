@@ -5,6 +5,7 @@ import {
   doublePrecision,
   index,
   integer,
+  pgEnum,
   pgTable,
   text,
   timestamp,
@@ -13,6 +14,11 @@ import {
 } from "drizzle-orm/pg-core";
 import { categories } from "./categories";
 import { brands } from "./brands";
+
+export const productTypeEnum = pgEnum("product_type", [
+  "simple",
+  "variable",
+]);
 
 export const products = pgTable(
   "products",
@@ -36,6 +42,10 @@ export const products = pgTable(
     description: varchar("description", {
       length: 2000,
     }),
+
+    productType: productTypeEnum("product_type")
+      .notNull()
+      .default("simple"),
 
     priceInMinorUnits: integer("price_in_minor_units")
       .notNull(),
@@ -107,3 +117,4 @@ export const products = pgTable(
 
 export type Product = typeof products.$inferSelect;
 export type NewProduct = typeof products.$inferInsert;
+export type ProductType = "simple" | "variable";
