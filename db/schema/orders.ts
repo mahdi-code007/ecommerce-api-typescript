@@ -9,6 +9,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { coupons } from "./coupons";
 import { users } from "./users";
 
 export const orderStatusEnum = pgEnum("order_status", [
@@ -56,8 +57,20 @@ export const orders = pgTable(
     subtotal: integer("subtotal")
       .notNull(),
 
+    discountAmount: integer("discount_amount")
+      .notNull()
+      .default(0),
+
     total: integer("total")
       .notNull(),
+
+    couponId: uuid("coupon_id").references(() => coupons.id, {
+      onDelete: "restrict",
+    }),
+
+    couponCode: varchar("coupon_code", {
+      length: 50,
+    }),
 
     shippingFullName: varchar("shipping_full_name", {
       length: 50,
@@ -121,6 +134,14 @@ export const orders = pgTable(
     check(
       "orders_total_non_negative",
       sql`${table.total} >= 0`,
+    ),
+    check(
+      "orders_discount_amount_non_negative",
+      sql`${table.discountAmount} >= 0`,
+    ),
+    check(
+      "orders_total_equals_subtotal_minus_discount",
+      sql`${table.total} = ${table.subtotal} - ${table.discountAmount}`,
     ),
   ],
 );

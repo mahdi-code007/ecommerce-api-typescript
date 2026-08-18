@@ -6,6 +6,7 @@ import type {
 import * as addressRepository from "../db/repositories/addressRepository";
 import * as cartRepository from "../db/repositories/cartRepository";
 import * as orderRepository from "../db/repositories/orderRepository";
+import { getCouponError } from "./couponController";
 import type {
   CreateOrderRequest,
   ListOrdersRequest,
@@ -42,17 +43,28 @@ export const createOrder = async (
     return;
   }
 
-  const result = await orderRepository.placeOrder(userId, address);
+  const result = await orderRepository.placeOrder(userId, address, {
+    couponCode: body.couponCode,
+  });
 
   if (!result.ok) {
-    next(
-      new AppError(
-        result.reason === "empty_cart"
-          ? "Cart is empty"
-          : "One or more products are unavailable or out of stock",
-        400,
-      ),
-    );
+    if (result.reason === "empty_cart") {
+      next(new AppError("Cart is empty", 400));
+      return;
+    }
+
+    if (result.reason === "unavailable") {
+      next(
+        new AppError(
+          "One or more products are unavailable or out of stock",
+          400,
+        ),
+      );
+      return;
+    }
+
+    const couponError = getCouponError(result.reason);
+    next(new AppError(couponError.message, couponError.statusCode));
     return;
   }
 

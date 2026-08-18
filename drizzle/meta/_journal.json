@@ -57,6 +57,13 @@
       "when": 1787022190596,
       "tag": "0007_worried_nightmare",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787022576235,
+      "tag": "0008_classy_cargill",
+      "breakpoints": true
     }
   ]
 }

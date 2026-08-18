@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 import { getPostgresDatabase } from "../../config/postgres";
 import * as cartRepository from "./cartRepository";
+import * as couponRepository from "./couponRepository";
 import * as reviewRepository from "./reviewRepository";
 import {
   cartItems,
@@ -40,7 +41,9 @@ type OrderView = {
   paymentMethod: Order["paymentMethod"];
   paymentStatus: Order["paymentStatus"];
   subtotal: number;
+  discountAmount: number;
   total: number;
+  couponCode: string | null;
   shippingAddress: ShippingAddressSnapshot;
   items: OrderItemView[];
   createdAt: Date;
@@ -66,7 +69,13 @@ class CheckoutUnavailableError extends Error {
 
 type PlaceOrderResult =
   | { ok: true; order: OrderView }
-  | { ok: false; reason: "empty_cart" | "unavailable" };
+  | {
+      ok: false;
+      reason:
+        | "empty_cart"
+        | "unavailable"
+        | couponRepository.CouponValidationReason;
+    };
 
 type CancelOrderResult =
   | { ok: true; order: OrderView }
@@ -110,7 +119,9 @@ const mapOrderView = (order: Order, items: OrderItem[]): OrderView => ({
   paymentMethod: order.paymentMethod,
   paymentStatus: order.paymentStatus,
   subtotal: order.subtotal,
+  discountAmount: order.discountAmount,
   total: order.total,
+  couponCode: order.couponCode,
   shippingAddress: mapShippingAddress(order),
   items: items.map(mapOrderItemView),
   createdAt: order.createdAt,
@@ -167,6 +178,7 @@ const applyCancellation = async (
 ): Promise<OrderView> => {
   const items = await loadOrderItems(tx, order.id);
   await restockOrderItems(tx, items);
+  await couponRepository.releaseCouponUsageForOrder(tx, order.id);
 
   const [updated] = await tx
     .update(orders)
@@ -187,6 +199,9 @@ const applyCancellation = async (
 const placeOrder = async (
   userId: string,
   address: Address,
+  options?: {
+    couponCode?: string;
+  },
 ): Promise<PlaceOrderResult> => {
   const db = getPostgresDatabase();
 
@@ -255,6 +270,7 @@ const placeOrder = async (
 
       return {
         productId: product.id,
+        categoryId: product.categoryId,
         productName: product.name,
         unitPriceInMinorUnits,
         quantity: row.item.quantity,
@@ -267,12 +283,59 @@ const placeOrder = async (
       0,
     );
 
+    const cartLineItems = lineItems.map((item) => ({
+      productId: item.productId,
+      categoryId: item.categoryId,
+      lineTotal: item.lineTotal,
+    }));
+
+    let discountAmount = 0;
+    let couponId: string | null = null;
+    let couponCodeSnapshot: string | null = null;
+
+    if (options?.couponCode) {
+      const lockedCoupon = await couponRepository.lockCouponByCode(
+        tx,
+        options.couponCode,
+      );
+
+      if (!lockedCoupon) {
+        return { ok: false, reason: "not_found" };
+      }
+
+      const couponValidation =
+        await couponRepository.validateLockedCouponForCart(
+          tx,
+          lockedCoupon,
+          {
+            userId,
+            cartLineItems,
+          },
+        );
+
+      if (!couponValidation.ok) {
+        return {
+          ok: false,
+          reason: couponValidation.reason,
+        };
+      }
+
+      discountAmount = couponValidation.discountAmount;
+      couponId = lockedCoupon.id;
+      couponCodeSnapshot = lockedCoupon.code;
+    }
+
+    const total = subtotal - discountAmount;
+
     const [order] = await tx
       .insert(orders)
       .values({
         userId,
         subtotal,
-        total: subtotal,
+        discountAmount,
+        total,
+        couponId,
+        couponCode: couponCodeSnapshot,
         shippingFullName: address.fullName,
         shippingPhone: address.phone,
         shippingCity: address.city,
@@ -286,6 +349,15 @@ const placeOrder = async (
 
     if (!order) {
       throw new Error("Failed to create order");
+    }
+
+    if (couponId && discountAmount > 0) {
+      await couponRepository.recordCouponUsage(tx, {
+        couponId,
+        userId,
+        orderId: order.id,
+        discountAmount,
+      });
     }
 
     const insertedItems = await tx

@@ -335,9 +335,46 @@ const clearCartByUserId = async (
     .where(eq(carts.id, cart.id));
 };
 
+const getCartLineItemsForCoupon = async (
+  userId: string,
+): Promise<
+  Array<{
+    productId: string;
+    categoryId: string;
+    lineTotal: number;
+  }>
+> => {
+  const cart = await findCartByUserId(userId);
+
+  if (!cart) {
+    return [];
+  }
+
+  const db = getPostgresDatabase();
+
+  const rows = await db
+    .select({
+      productId: products.id,
+      categoryId: products.categoryId,
+      priceInMinorUnits: products.priceInMinorUnits,
+      quantity: cartItems.quantity,
+    })
+    .from(cartItems)
+    .innerJoin(products, eq(cartItems.productId, products.id))
+    .where(eq(cartItems.cartId, cart.id))
+    .orderBy(asc(cartItems.createdAt));
+
+  return rows.map((row) => ({
+    productId: row.productId,
+    categoryId: row.categoryId,
+    lineTotal: row.priceInMinorUnits * row.quantity,
+  }));
+};
+
 export {
   getOrCreateCart,
   getCartViewByUserId,
+  getCartLineItemsForCoupon,
   findItemByProduct,
   findItemInUserCart,
   insertCartItem,

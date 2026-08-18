@@ -70,3 +70,31 @@ export {
   type FavoriteItem,
   type NewFavoriteItem,
 } from "./favoriteItems";
+
+export {
+  discountTypeEnum,
+  couponScopeEnum,
+  coupons,
+  type Coupon,
+  type NewCoupon,
+  type DiscountType,
+  type CouponScope,
+} from "./coupons";
+
+export {
+  couponCategories,
+  type CouponCategory,
+  type NewCouponCategory,
+} from "./couponCategories";
+
+export {
+  couponProducts,
+  type CouponProduct,
+  type NewCouponProduct,
+} from "./couponProducts";
+
+export {
+  couponUsages,
+  type CouponUsage,
+  type NewCouponUsage,
+} from "./couponUsages";

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Ecommerce API v1",
-    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart, address, and order requests need the same `{{token}}`. A regular user token is enough; admin is not required except for `/admin/orders`.\n7. Create an address, add a product to the cart, then run `Place Order`.\n8. Try deleting a category before deleting its product to see a `409 Conflict` response.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me`, profile update, password change, cart, wishlist, favorites, addresses, customer orders, and product reviews.\n- Admin: category and product writes, and `/admin/orders`.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Authenticated requests send `Authorization: Bearer {{token}}`.\n- Adding to the cart does not decrease stock. Checkout does.\n- Phone numbers must be Saudi: `05XXXXXXXX` or `+9665XXXXXXXX`.\n- Checkout is cash on delivery only.",
+    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart, address, coupon, and order requests need the same `{{token}}`. A regular user token is enough; admin is not required except for `/admin/orders` and `/admin/coupons`.\n7. Create an address, add a product to the cart, optionally create a coupon as admin, validate it, then run `Place Order`.\n8. Try deleting a category before deleting its product to see a `409 Conflict` response.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me`, profile update, password change, cart, wishlist, favorites, addresses, coupon validate, customer orders, and product reviews.\n- Admin: category and product writes, `/admin/coupons`, and `/admin/orders`.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Authenticated requests send `Authorization: Bearer {{token}}`.\n- Adding to the cart does not decrease stock. Checkout does.\n- Phone numbers must be Saudi: `05XXXXXXXX` or `+9665XXXXXXXX`.\n- Checkout is cash on delivery only.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -59,6 +59,12 @@
       "value": "",
       "type": "string",
       "description": "Saved automatically after a successful Place Order request."
+    },
+    {
+      "key": "couponId",
+      "value": "",
+      "type": "string",
+      "description": "Saved automatically after a successful admin Create Coupon request."
     }
   ],
   "item": [
@@ -1353,6 +1359,44 @@
       ]
     },
     {
+      "name": "Coupons",
+      "description": "Logged-in customer. Preview a discount code against the current cart before checkout.",
+      "item": [
+        {
+          "name": "Validate Coupon",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SAVE20\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/coupons/validate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "coupons", "validate"]
+            },
+            "description": "Preview discount on the current cart.\n\nReturns `subtotal`, `eligibleSubtotal`, `discountAmount`, and `total`. Empty cart returns `400`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Orders",
       "description": "Logged-in customer. Create an address and add a cart item first. Checkout is cash on delivery and decreases stock.",
       "item": [
@@ -1403,6 +1447,56 @@
               "path": ["api", "v1", "orders"]
             },
             "description": "Creates an order from the current cart, snapshots prices and the shipping address, decrements stock, and clears cart items.\n\n- Empty cart: `400`.\n- Address not owned by this user: `404`.\n- Product unavailable or out of stock: `400`."
+          },
+          "response": []
+        },
+        {
+          "name": "Place Order With Coupon",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data?.order?.id) {",
+                  "  pm.collectionVariables.set('orderId', json.data.order.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addressId\": \"{{addressId}}\",\n  \"couponCode\": \"SAVE20\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders"]
+            },
+            "description": "Places an order with an optional coupon code. The discount is re-validated server-side inside the checkout transaction."
           },
           "response": []
         },
@@ -1502,6 +1596,198 @@
               "path": ["api", "v1", "orders", "{{orderId}}", "reorder"]
             },
             "description": "Adds this order's products to the cart at live prices. Unavailable or out-of-stock items are listed in `skipped`. Another user's order returns `404`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin Coupons",
+      "description": "Admin JWT required. Create and manage discount codes.",
+      "item": [
+        {
+          "name": "Create Percentage Coupon",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data?.coupon?.id) {",
+                  "  pm.collectionVariables.set('couponId', json.data.coupon.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SAVE20\",\n  \"name\": \"20% off\",\n  \"discountType\": \"percentage\",\n  \"discountValue\": 20,\n  \"maxDiscountAmount\": 5000,\n  \"scope\": \"all\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/coupons",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "coupons"]
+            },
+            "description": "Creates a percentage coupon with optional max discount cap."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Fixed Amount Coupon",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"FLAT50\",\n  \"name\": \"50 off\",\n  \"discountType\": \"fixed_amount\",\n  \"discountValue\": 5000,\n  \"scope\": \"all\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/coupons",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "coupons"]
+            },
+            "description": "Creates a fixed-amount coupon. `discountValue` is in minor units."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Coupons",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/coupons?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "coupons"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "isActive",
+                  "value": "true",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Lists coupons with pagination."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Coupon By Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/coupons/{{couponId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "coupons", "{{couponId}}"]
+            },
+            "description": "Returns one coupon with linked category and product ids."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Coupon",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/coupons/{{couponId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "coupons", "{{couponId}}"]
+            },
+            "description": "Partial update. Deactivate a coupon that has already been used instead of deleting it."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Coupon",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/coupons/{{couponId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "coupons", "{{couponId}}"]
+            },
+            "description": "Deletes a coupon only when `timesUsed` is 0. Otherwise returns `409`."
           },
           "response": []
         }

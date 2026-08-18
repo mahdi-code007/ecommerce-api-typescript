@@ -21,7 +21,7 @@
 
 This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, PostgreSQL, Drizzle, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
 
-The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, a logged-in shopping cart, wishlist and favorites, multiple shipping addresses with one default, cash-on-delivery checkout, order filtering and reorder, product reviews after delivery, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
+The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, a logged-in shopping cart, wishlist and favorites, multiple shipping addresses with one default, cash-on-delivery checkout with optional discount codes, order filtering and reorder, product reviews after delivery, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
 
 > [!NOTE]
 > This is an active learning project. Features are added progressively as I explore backend architecture and full-stack product development.
@@ -350,9 +350,65 @@ Create body example:
 
 An address that does not belong to the current user returns `404`. Deleting the default promotes the oldest remaining address. Checkout copies the address onto the order, so deleting it later does not change past orders.
 
+### Coupons
+
+Discount codes work like Shopify or WooCommerce: one code per order, validated server-side at checkout. Prices stay in `priceInMinorUnits`. Automatic promotions are not implemented yet.
+
+| Method | Endpoint | Access | Description |
+| :---: | --- | --- | --- |
+| `POST` | `/coupons/validate` | Authenticated | Preview a code against the current cart |
+| `GET` | `/admin/coupons` | Admin | List coupons with pagination |
+| `POST` | `/admin/coupons` | Admin | Create a coupon |
+| `GET` | `/admin/coupons/:couponId` | Admin | Get one coupon |
+| `PATCH` | `/admin/coupons/:couponId` | Admin | Update a coupon |
+| `DELETE` | `/admin/coupons/:couponId` | Admin | Delete if never used, else `409` |
+
+Validate body:
+
+```json
+{ "code": "SAVE20" }
+```
+
+Validate response:
+
+```json
+{
+  "coupon": {
+    "code": "SAVE20",
+    "name": "20% off",
+    "discountType": "percentage",
+    "discountValue": 20
+  },
+  "subtotal": 25000,
+  "eligibleSubtotal": 25000,
+  "discountAmount": 5000,
+  "total": 20000
+}
+```
+
+Admin create example (percentage with cap):
+
+```json
+{
+  "code": "SAVE20",
+  "name": "20% off",
+  "discountType": "percentage",
+  "discountValue": 20,
+  "maxDiscountAmount": 5000,
+  "minOrderAmount": 10000,
+  "usageLimit": 1000,
+  "usageLimitPerUser": 1,
+  "scope": "all"
+}
+```
+
+Discount types: `fixed_amount` (minor units) or `percentage` (1–100). `maxDiscountAmount` applies only to percentage discounts. Scope: `all`, `category` (requires `categoryIds`), or `product` (requires `productIds`). Codes are stored uppercase.
+
+Common errors: invalid or inactive code → `404`; expired, usage limit, minimum order, or no eligible cart items → `400`.
+
 ### Orders
 
-Checkout turns the current cart into an order in one database transaction: it snapshots product prices and the shipping address, decrements stock, and clears cart items. Payment is cash on delivery only. A payment gateway is not implemented yet.
+Checkout turns the current cart into an order in one database transaction: it snapshots product prices and the shipping address, applies an optional coupon, decrements stock, and clears cart items. Payment is cash on delivery only. A payment gateway is not implemented yet.
 
 A regular user token is enough for the customer endpoints. The first address or any owned `addressId` can be used.
 
@@ -370,8 +426,13 @@ A regular user token is enough for the customer endpoints. The first address or 
 Checkout body:
 
 ```json
-{ "addressId": "<uuid>" }
+{
+  "addressId": "<uuid>",
+  "couponCode": "SAVE20"
+}
 ```
+
+`couponCode` is optional. Order responses include `subtotal` (before discount), `discountAmount`, `total` (after discount), and a `couponCode` snapshot when a code was applied. Cancelling a pending order removes coupon usage and restores `timesUsed`.
 
 Admin status body:
 
@@ -605,6 +666,7 @@ flowchart LR
   User --> FavoritesAPI["Favorites APIs"]
   User --> AddressAPI["Address APIs"]
   User --> OrderAPI["Order APIs"]
+  User --> CouponAPI["Coupon validate"]
   User --> Me["GET /auth/me"]
   User --> Reviews["POST product reviews"]
   Admin["Admin"] --> Public
@@ -614,6 +676,7 @@ flowchart LR
   Admin --> AddressAPI
   Admin --> OrderAPI
   Admin --> AdminOrders["Admin order APIs"]
+  Admin --> AdminCoupons["Admin coupon APIs"]
   Admin --> Writes["Category and product writes"]
 
   Public --> Catalog["GET /categories<br/>GET /products<br/>GET product reviews"]
@@ -622,6 +685,8 @@ flowchart LR
   FavoritesAPI --> FavoritesTable["favorite_items"]
   AddressAPI --> AddressTable["addresses"]
   OrderAPI --> OrderTables["orders + order_items"]
+  CouponAPI --> CouponTables["coupons + coupon_usages"]
+  AdminCoupons --> CouponTables
   AdminOrders --> OrderTables
   Writes --> CatalogTables["categories + products"]
 ```
@@ -645,7 +710,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 - [ ] Product variants and advanced inventory
 - [ ] Product image upload and storage
 - [x] Wishlist
-- [ ] Coupons and promotions
+- [x] Coupons and promotions
 - [ ] Payment gateway integration
 - [x] Reviews and ratings
 - [ ] File and image storage
@@ -657,7 +722,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 
 ## 🧪 Explore with Postman
 
-Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, Cart, Wishlist, Favorites, Addresses, Orders, and Reviews requests. Customer examples use `{{token}}` from `Login`. Admin order status updates need an admin token.
+Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, Cart, Wishlist, Favorites, Coupons, Addresses, Orders, and Reviews requests. Customer examples use `{{token}}` from `Login`. Admin coupon and order status updates need an admin token.
 
 ---
 

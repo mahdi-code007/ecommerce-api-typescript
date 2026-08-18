@@ -16,6 +16,18 @@ const createOrderRequestSchema = z.object({
     addressId: z.uuid({
       error: "Invalid address id",
     }),
+    couponCode: z
+      .string({
+        error: "Coupon code must be a string",
+      })
+      .trim()
+      .min(1, {
+        error: "Coupon code cannot be empty",
+      })
+      .max(50, {
+        error: "Coupon code must be less than 50 characters long",
+      })
+      .optional(),
   }),
 });
 
