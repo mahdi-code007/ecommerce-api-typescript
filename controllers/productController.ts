@@ -3,6 +3,7 @@ import type {
   Request,
   Response,
 } from "express";
+import * as brandRepository from "../db/repositories/brandRepository";
 import * as categoryRepository from "../db/repositories/categoryRepository";
 import * as productRepository from "../db/repositories/productRepository";
 import type {
@@ -28,6 +29,20 @@ const ensureCategoryExists = async (
   return true;
 };
 
+const ensureBrandExists = async (
+  brandId: string,
+  next: NextFunction,
+): Promise<boolean> => {
+  const brand = await brandRepository.findBrandById(brandId);
+
+  if (!brand) {
+    next(new AppError("Brand not found", 404));
+    return false;
+  }
+
+  return true;
+};
+
 // @desc Create a new product
 // @route POST /api/v1/products
 // @access private
@@ -39,6 +54,13 @@ export const createProduct = async (
   const { body } = getValidated<CreateProductRequest>(req);
 
   if (!(await ensureCategoryExists(body.categoryId, next))) {
+    return;
+  }
+
+  if (
+    body.brandId &&
+    !(await ensureBrandExists(body.brandId, next))
+  ) {
     return;
   }
 
@@ -91,6 +113,13 @@ export const updateProduct = async (
   if (
     body.categoryId !== undefined &&
     !(await ensureCategoryExists(body.categoryId, next))
+  ) {
+    return;
+  }
+
+  if (
+    body.brandId &&
+    !(await ensureBrandExists(body.brandId, next))
   ) {
     return;
   }

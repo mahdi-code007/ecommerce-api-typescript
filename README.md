@@ -21,7 +21,7 @@
 
 This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, PostgreSQL, Drizzle, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
 
-The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, a logged-in shopping cart, wishlist and favorites, multiple shipping addresses with one default, cash-on-delivery checkout with optional discount codes, order filtering and reorder, product reviews after delivery, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
+The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, category subcategories and brands, a logged-in shopping cart, wishlist and favorites, multiple shipping addresses with one default, cash-on-delivery checkout with optional discount codes, order filtering and reorder, product reviews after delivery, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
 
 > [!NOTE]
 > This is an active learning project. Features are added progressively as I explore backend architecture and full-stack product development.
@@ -202,17 +202,64 @@ Delete account requires the current password. If the user has any orders, the AP
 
 ### Categories
 
+Categories support one level of subcategories via optional `parentId`. Root categories have `parentId: null`. Subcategories must be created under a root category. Products may link to either a root category or a subcategory.
+
 | Method | Endpoint | Access | Description |
 | :---: | --- | --- | --- |
 | `GET` | `/categories` | Public | List categories with pagination |
-| `POST` | `/categories` | Admin | Create a category |
-| `GET` | `/categories/:id` | Public | Get a category by ID |
+| `POST` | `/categories` | Admin | Create a root category or subcategory |
+| `GET` | `/categories/:id` | Public | Get a category with `parent` and `subcategories` |
 | `PATCH` | `/categories/:id` | Admin | Update a category |
 | `DELETE` | `/categories/:id` | Admin | Delete a category |
 
-The list endpoint accepts optional `page` and `limit` query parameters. The maximum page size is `100`.
+List query parameters:
 
-A category that still has associated products cannot be deleted. The API returns `409 Conflict` until those products are removed or reassigned.
+| Parameter | Description |
+| --- | --- |
+| `page` / `limit` | Pagination (max `limit` 100) |
+| `rootsOnly=true` | Root categories only |
+| `parentId=<uuid>` | Direct subcategories of a root category |
+
+Create root category:
+
+```json
+{
+  "name": "Electronics",
+  "description": "Electronic devices"
+}
+```
+
+Create subcategory:
+
+```json
+{
+  "name": "Phones",
+  "parentId": "<root-category-uuid>"
+}
+```
+
+A category cannot be deleted while it has subcategories or associated products. The API returns `409 Conflict`.
+
+### Brands
+
+| Method | Endpoint | Access | Description |
+| :---: | --- | --- | --- |
+| `GET` | `/brands` | Public | List brands with pagination |
+| `GET` | `/brands/:id` | Public | Get a brand by ID |
+| `POST` | `/brands` | Admin | Create a brand |
+| `PATCH` | `/brands/:id` | Admin | Update a brand |
+| `DELETE` | `/brands/:id` | Admin | Delete a brand |
+
+Create body:
+
+```json
+{
+  "name": "Samsung",
+  "logo": "https://example.com/brands/samsung.png"
+}
+```
+
+A brand with associated products cannot be deleted. The API returns `409 Conflict`.
 
 ### Products
 
@@ -231,7 +278,8 @@ The public catalog returns products where `isActive` is `true` and supports thes
 | Parameter | Description |
 | --- | --- |
 | `search` | Case-insensitive partial match against the product name |
-| `categoryId` | Filter by category ID |
+| `categoryId` | Filter by category ID. When the ID is a root category, products in its direct subcategories are included |
+| `brandId` | Filter by brand ID |
 | `minPrice` | Minimum `priceInMinorUnits` |
 | `maxPrice` | Maximum `priceInMinorUnits` |
 | `inStock` | Use `true` for products with stock or `false` for out-of-stock products |
@@ -247,7 +295,7 @@ GET /api/v1/products?search=phone&categoryId=58b9c274-6727-4ad8-921e-8b235bcb69f
 
 Product prices are stored in `priceInMinorUnits` as integers—for example, `125075` represents `1250.75` in the selected currency.
 
-Product responses populate the related category's `name` and `slug`. Rating fields are controlled by the server: they change when a customer reviews a product after a delivered order.
+Product responses populate the related category (`id`, `name`, `slug`, `parentId`) and optional brand (`id`, `name`, `slug`, or `null`). Rating fields are controlled by the server: they change when a customer reviews a product after a delivered order.
 
 A customer may leave one review per product. The product must appear on one of their `delivered` orders. A second review returns `409`. Reviewing before delivery returns `403`.
 
@@ -402,7 +450,7 @@ Admin create example (percentage with cap):
 }
 ```
 
-Discount types: `fixed_amount` (minor units) or `percentage` (1–100). `maxDiscountAmount` applies only to percentage discounts. Scope: `all`, `category` (requires `categoryIds`), or `product` (requires `productIds`). Codes are stored uppercase.
+Discount types: `fixed_amount` (minor units) or `percentage` (1–100). `maxDiscountAmount` applies only to percentage discounts. Scope: `all`, `category` (requires `categoryIds`), or `product` (requires `productIds`). Codes are stored uppercase. A coupon scoped to a root category also applies to products in its direct subcategories.
 
 Common errors: invalid or inactive code → `404`; expired, usage limit, minimum order, or no eligible cart items → `400`.
 
@@ -706,7 +754,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 - [x] Shipping addresses
 - [x] COD checkout and order status
 - [x] User profile management
-- [ ] Brands and subcategories
+- [x] Brands and subcategories
 - [ ] Product variants and advanced inventory
 - [ ] Product image upload and storage
 - [x] Wishlist
@@ -722,7 +770,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 
 ## 🧪 Explore with Postman
 
-Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, Cart, Wishlist, Favorites, Coupons, Addresses, Orders, and Reviews requests. Customer examples use `{{token}}` from `Login`. Admin coupon and order status updates need an admin token.
+Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, Brands, Cart, Wishlist, Favorites, Coupons, Addresses, Orders, and Reviews requests. Customer examples use `{{token}}` from `Login`. Admin catalog, coupon, and order status updates need an admin token.
 
 ---
 

@@ -4,6 +4,14 @@ const categoryIdSchema = z.uuid({
   error: "Invalid category id",
 });
 
+const brandIdSchema = z.uuid({
+  error: "Invalid brand id",
+});
+
+const optionalBrandIdSchema = z
+  .union([brandIdSchema, z.null()])
+  .optional();
+
 const productIdSchema = z.uuid({
   error: "Invalid product id",
 });
@@ -65,6 +73,8 @@ const productFieldsSchema = z.strictObject({
     }),
 
   categoryId: categoryIdSchema,
+
+  brandId: optionalBrandIdSchema,
 
   image: z
     .string({
@@ -151,6 +161,8 @@ const getProductsQuerySchema = z
       .default(10),
 
     categoryId: categoryIdSchema.optional(),
+
+    brandId: brandIdSchema.optional(),
 
     search: z
       .string({

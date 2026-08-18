@@ -9,6 +9,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { getPostgresDatabase } from "../../config/postgres";
+import * as categoryRepository from "./categoryRepository";
 import {
   categories,
   couponCategories,
@@ -275,6 +276,12 @@ const validateCouponRecord = async (
   }
 
   const scopeIds = await loadScopeIds(db, coupon.id);
+  const expandedCategoryIds =
+    coupon.scope === "category"
+      ? await categoryRepository.expandCategoryIdsWithDescendants(
+          scopeIds.categoryIds,
+        )
+      : scopeIds.categoryIds;
   const subtotal = input.cartLineItems.reduce(
     (total, item) => total + item.lineTotal,
     0,
@@ -282,7 +289,7 @@ const validateCouponRecord = async (
   const eligibleSubtotal = calculateEligibleSubtotal(
     coupon,
     input.cartLineItems,
-    scopeIds.categoryIds,
+    expandedCategoryIds,
     scopeIds.productIds,
   );
 

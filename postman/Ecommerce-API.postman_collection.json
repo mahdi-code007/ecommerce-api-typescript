@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Ecommerce API v1",
-    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart, address, coupon, and order requests need the same `{{token}}`. A regular user token is enough; admin is not required except for `/admin/orders` and `/admin/coupons`.\n7. Create an address, add a product to the cart, optionally create a coupon as admin, validate it, then run `Place Order`.\n8. Try deleting a category before deleting its product to see a `409 Conflict` response.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me`, profile update, password change, cart, wishlist, favorites, addresses, coupon validate, customer orders, and product reviews.\n- Admin: category and product writes, `/admin/coupons`, and `/admin/orders`.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Authenticated requests send `Authorization: Bearer {{token}}`.\n- Adding to the cart does not decrease stock. Checkout does.\n- Phone numbers must be Saudi: `05XXXXXXXX` or `+9665XXXXXXXX`.\n- Checkout is cash on delivery only.",
+    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart, address, coupon, and order requests need the same `{{token}}`. A regular user token is enough; admin is not required except for `/admin/orders` and `/admin/coupons`.\n7. Create an address, add a product to the cart, optionally create a coupon as admin, validate it, then run `Place Order`.\n8. Try deleting a category before deleting its product to see a `409 Conflict` response.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me`, profile update, password change, cart, wishlist, favorites, addresses, coupon validate, customer orders, and product reviews.\n- Admin: category, brand, and product writes, `/admin/coupons`, and `/admin/orders`.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Authenticated requests send `Authorization: Bearer {{token}}`.\n- Adding to the cart does not decrease stock. Checkout does.\n- Phone numbers must be Saudi: `05XXXXXXXX` or `+9665XXXXXXXX`.\n- Checkout is cash on delivery only.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -65,6 +65,18 @@
       "value": "",
       "type": "string",
       "description": "Saved automatically after a successful admin Create Coupon request."
+    },
+    {
+      "key": "subcategoryId",
+      "value": "",
+      "type": "string",
+      "description": "Saved automatically after a successful Create Subcategory request."
+    },
+    {
+      "key": "brandId",
+      "value": "",
+      "type": "string",
+      "description": "Saved automatically after a successful Create Brand request."
     }
   ],
   "item": [
@@ -427,6 +439,112 @@
           "response": []
         },
         {
+          "name": "Create Subcategory",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data?.category?.id) {",
+                  "  pm.collectionVariables.set('subcategoryId', json.data.category.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Phones {{$timestamp}}\",\n  \"description\": \"Mobile phones\",\n  \"parentId\": \"{{categoryId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "categories"]
+            },
+            "description": "Admin only. Creates a subcategory under the root category saved in `categoryId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Root Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/categories?rootsOnly=true&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "categories"],
+              "query": [
+                {
+                  "key": "rootsOnly",
+                  "value": "true"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Public. Lists root categories only (`parentId` is null)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Subcategories By Parent",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/categories?parentId={{categoryId}}&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "categories"],
+              "query": [
+                {
+                  "key": "parentId",
+                  "value": "{{categoryId}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Public. Lists direct subcategories of the root category in `categoryId`."
+          },
+          "response": []
+        },
+        {
           "name": "Delete Category",
           "request": {
             "method": "DELETE",
@@ -441,7 +559,152 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "categories", "{{categoryId}}"]
             },
-            "description": "Admin only. Deletes the category if it has no associated products.\n\nIf products are linked, returns `409 Conflict` with:\n\n```json\n{\n  \"status\": \"fail\",\n  \"message\": \"Cannot delete a category that has associated products\"\n}\n```"
+            "description": "Admin only. Deletes the category if it has no subcategories and no associated products.\n\nIf subcategories or products are linked, returns `409 Conflict`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Brands",
+      "description": "GET requests are public. Create, update, and delete require an admin JWT.",
+      "item": [
+        {
+          "name": "Create Brand",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data?.brand?.id) {",
+                  "  pm.collectionVariables.set('brandId', json.data.brand.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Samsung {{$timestamp}}\",\n  \"logo\": \"https://example.com/brands/samsung.png\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/brands",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "brands"]
+            },
+            "description": "Admin only. Creates a brand and saves `id` to `brandId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Brands",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/brands?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "brands"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Public. Lists brands with pagination."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Brand By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/brands/{{brandId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "brands", "{{brandId}}"]
+            },
+            "description": "Public. Returns one brand by `brandId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Brand",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Brand {{$timestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/brands/{{brandId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "brands", "{{brandId}}"]
+            },
+            "description": "Admin only. Partial update."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Brand",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/brands/{{brandId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "brands", "{{brandId}}"]
+            },
+            "description": "Admin only. Returns `409` if products are linked to this brand."
           },
           "response": []
         }

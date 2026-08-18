@@ -20,6 +20,16 @@ const categoryIdSchema = z.uuid({
 const categoryParamsSchema = z.strictObject({
   id: categoryIdSchema,
 });
+
+const optionalParentIdSchema = z
+  .union([
+    z.uuid({
+      error: "Invalid parent category id",
+    }),
+    z.null(),
+  ])
+  .optional();
+
 const createCategorySchema = z.strictObject({
   name: nameSchema,
 
@@ -39,6 +49,8 @@ const createCategorySchema = z.strictObject({
     })
     .trim()
     .optional(),
+
+  parentId: optionalParentIdSchema,
 });
 
 const createCategoryRequestSchema = z.object({
@@ -90,6 +102,17 @@ const getCategoriesRequestSchema = z.object({
         error: "Limit must not exceed 100",
       })
       .default(10),
+
+    parentId: categoryIdSchema.optional(),
+
+    rootsOnly: z
+      .enum(["true", "false"], {
+        error: "rootsOnly must be true or false",
+      })
+      .optional()
+      .transform((value) =>
+        value === undefined ? undefined : value === "true",
+      ),
   }),
 });
 

@@ -4,6 +4,7 @@ import express, {
 } from "express";
 import morgan from "morgan";
 import categoryRoutes = require("./routes/categoryRoutes");
+import brandRoutes = require("./routes/brandRoutes");
 import productRoutes = require("./routes/productRoutes");
 import authRoutes = require("./routes/authRoutes");
 import cartRoutes = require("./routes/cartRoutes");
@@ -62,6 +63,7 @@ if (process.env.NODE_ENV === "development") {
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/categories", categoryRoutes);
+app.use("/api/v1/brands", brandRoutes);
 app.use("/api/v1/products", productRoutes);
 app.use("/api/v1/cart", cartRoutes);
 app.use("/api/v1/addresses", addressRoutes);

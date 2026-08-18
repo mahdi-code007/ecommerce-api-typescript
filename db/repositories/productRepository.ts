@@ -7,12 +7,14 @@ import {
   gt,
   gte,
   ilike,
+  inArray,
   lte,
   type SQL,
 } from "drizzle-orm";
 import slugify from "slugify";
 import { getPostgresDatabase } from "../../config/postgres";
-import { categories, products, type Product } from "../schema";
+import * as categoryRepository from "./categoryRepository";
+import { brands, categories, products, type Product } from "../schema";
 
 type CreateProductInput = {
   name: string;
@@ -20,6 +22,7 @@ type CreateProductInput = {
   priceInMinorUnits: number;
   stock: number;
   categoryId: string;
+  brandId?: string | null;
   image?: string;
   isActive?: boolean;
 };
@@ -30,6 +33,7 @@ type UpdateProductInput = {
   priceInMinorUnits?: number;
   stock?: number;
   categoryId?: string;
+  brandId?: string | null;
   image?: string;
   isActive?: boolean;
 };
@@ -44,6 +48,7 @@ type FindAllProductsParams = {
   page: number;
   limit: number;
   categoryId?: string;
+  brandId?: string;
   search?: string;
   minPrice?: number;
   maxPrice?: number;
@@ -55,23 +60,37 @@ type ProductCategorySummary = {
   id: string;
   name: string;
   slug: string;
+  parentId: string | null;
 };
 
-type ProductWithCategory = Product & {
+type ProductBrandSummary = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+type ProductWithCategoryAndBrand = Product & {
   category: ProductCategorySummary;
+  brand: ProductBrandSummary | null;
 };
 
 type FindAllProductsResult = {
-  products: ProductWithCategory[];
+  products: ProductWithCategoryAndBrand[];
   total: number;
 };
 
-const productWithCategorySelect = {
+const productWithRelationsSelect = {
   product: products,
   category: {
     id: categories.id,
     name: categories.name,
     slug: categories.slug,
+    parentId: categories.parentId,
+  },
+  brand: {
+    id: brands.id,
+    name: brands.name,
+    slug: brands.slug,
   },
 };
 
@@ -84,12 +103,14 @@ const buildSlug = (name: string): string =>
 const escapeIlikePattern = (value: string): string =>
   value.replace(/[%_\\]/g, "\\$&");
 
-const mapProductWithCategory = (row: {
+const mapProductWithRelations = (row: {
   product: Product;
   category: ProductCategorySummary;
-}): ProductWithCategory => ({
+  brand: ProductBrandSummary | null;
+}): ProductWithCategoryAndBrand => ({
   ...row.product,
   category: row.category,
+  brand: row.brand?.id ? row.brand : null,
 });
 
 const getSortColumns = (sort: ProductSort) => {
@@ -119,12 +140,20 @@ const getSortColumns = (sort: ProductSort) => {
 };
 
 const buildCatalogFilters = ({
-  categoryId,
+  categoryIds,
+  brandId,
   search,
   minPrice,
   maxPrice,
   inStock,
-}: Omit<FindAllProductsParams, "page" | "limit" | "sort">): SQL[] => {
+}: {
+  categoryIds?: string[];
+  brandId?: string;
+  search?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  inStock?: boolean;
+}): SQL[] => {
   const filters: SQL[] = [eq(products.isActive, true)];
 
   if (search !== undefined) {
@@ -133,8 +162,12 @@ const buildCatalogFilters = ({
     );
   }
 
-  if (categoryId !== undefined) {
-    filters.push(eq(products.categoryId, categoryId));
+  if (categoryIds !== undefined && categoryIds.length > 0) {
+    filters.push(inArray(products.categoryId, categoryIds));
+  }
+
+  if (brandId !== undefined) {
+    filters.push(eq(products.brandId, brandId));
   }
 
   if (minPrice !== undefined) {
@@ -156,22 +189,23 @@ const buildCatalogFilters = ({
 
 const findProductById = async (
   id: string,
-): Promise<ProductWithCategory | null> => {
+): Promise<ProductWithCategoryAndBrand | null> => {
   const db = getPostgresDatabase();
 
   const [row] = await db
-    .select(productWithCategorySelect)
+    .select(productWithRelationsSelect)
     .from(products)
     .innerJoin(categories, eq(products.categoryId, categories.id))
+    .leftJoin(brands, eq(products.brandId, brands.id))
     .where(eq(products.id, id))
     .limit(1);
 
-  return row ? mapProductWithCategory(row) : null;
+  return row ? mapProductWithRelations(row) : null;
 };
 
 const createProduct = async (
   input: CreateProductInput,
-): Promise<ProductWithCategory> => {
+): Promise<ProductWithCategoryAndBrand> => {
   const db = getPostgresDatabase();
 
   const [created] = await db
@@ -183,6 +217,7 @@ const createProduct = async (
       priceInMinorUnits: input.priceInMinorUnits,
       stock: input.stock,
       categoryId: input.categoryId,
+      brandId: input.brandId ?? null,
       image: input.image,
       isActive: input.isActive,
     })
@@ -207,9 +242,22 @@ const findAllProducts = async (
   params: FindAllProductsParams,
 ): Promise<FindAllProductsResult> => {
   const db = getPostgresDatabase();
-  const { page, limit, sort } = params;
+  const { page, limit, sort, categoryId, brandId } = params;
   const offset = (page - 1) * limit;
-  const filters = buildCatalogFilters(params);
+
+  const categoryIds =
+    categoryId !== undefined
+      ? await categoryRepository.resolveCategoryIdsForFilter(categoryId)
+      : undefined;
+
+  const filters = buildCatalogFilters({
+    categoryIds,
+    brandId,
+    search: params.search,
+    minPrice: params.minPrice,
+    maxPrice: params.maxPrice,
+    inStock: params.inStock,
+  });
   const whereClause = and(...filters);
 
   const [totalResult] = await db
@@ -218,16 +266,17 @@ const findAllProducts = async (
     .where(whereClause);
 
   const rows = await db
-    .select(productWithCategorySelect)
+    .select(productWithRelationsSelect)
     .from(products)
     .innerJoin(categories, eq(products.categoryId, categories.id))
+    .leftJoin(brands, eq(products.brandId, brands.id))
     .where(whereClause)
     .orderBy(...getSortColumns(sort))
     .limit(limit)
     .offset(offset);
 
   return {
-    products: rows.map(mapProductWithCategory),
+    products: rows.map(mapProductWithRelations),
     total: totalResult?.total ?? 0,
   };
 };
@@ -235,7 +284,7 @@ const findAllProducts = async (
 const updateProductById = async (
   id: string,
   input: UpdateProductInput,
-): Promise<ProductWithCategory | null> => {
+): Promise<ProductWithCategoryAndBrand | null> => {
   const db = getPostgresDatabase();
 
   const updateValues: Partial<typeof products.$inferInsert> & {
@@ -263,6 +312,10 @@ const updateProductById = async (
 
   if (input.categoryId !== undefined) {
     updateValues.categoryId = input.categoryId;
+  }
+
+  if (input.brandId !== undefined) {
+    updateValues.brandId = input.brandId;
   }
 
   if (input.image !== undefined) {
@@ -314,7 +367,19 @@ const countProductsByCategoryId = async (
   return result?.total ?? 0;
 };
 
+const countProductsByBrandId = async (brandId: string): Promise<number> => {
+  const db = getPostgresDatabase();
+
+  const [result] = await db
+    .select({ total: count() })
+    .from(products)
+    .where(eq(products.brandId, brandId));
+
+  return result?.total ?? 0;
+};
+
 export {
+  countProductsByBrandId,
   createProduct,
   findAllProducts,
   findProductById,
@@ -328,6 +393,6 @@ export type {
   UpdateProductInput,
   FindAllProductsParams,
   FindAllProductsResult,
-  ProductWithCategory,
+  ProductWithCategoryAndBrand,
   ProductSort,
 };

@@ -1,25 +1,19 @@
 import { sql } from "drizzle-orm";
 import {
   check,
-  index,
   pgTable,
   text,
   timestamp,
   uuid,
   varchar,
-  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
-export const categories = pgTable(
-  "categories",
+export const brands = pgTable(
+  "brands",
   {
     id: uuid("id")
       .defaultRandom()
       .primaryKey(),
-
-    parentId: uuid("parent_id").references((): AnyPgColumn => categories.id, {
-      onDelete: "restrict",
-    }),
 
     name: varchar("name", {
       length: 50,
@@ -33,13 +27,7 @@ export const categories = pgTable(
       .notNull()
       .unique(),
 
-    description: varchar("description", {
-      length: 500,
-    })
-      .notNull()
-      .default("No description provided"),
-
-    image: text("image"),
+    logo: text("logo"),
 
     createdAt: timestamp("created_at", {
       withTimezone: true,
@@ -54,13 +42,12 @@ export const categories = pgTable(
       .defaultNow(),
   },
   (table) => [
-    index("categories_parent_id_idx").on(table.parentId),
     check(
-      "categories_name_min_length",
+      "brands_name_min_length",
       sql`char_length(${table.name}) >= 3`,
     ),
   ],
 );
 
-export type Category = typeof categories.$inferSelect;
-export type NewCategory = typeof categories.$inferInsert;
+export type Brand = typeof brands.$inferSelect;
+export type NewBrand = typeof brands.$inferInsert;

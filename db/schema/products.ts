@@ -12,6 +12,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { categories } from "./categories";
+import { brands } from "./brands";
 
 export const products = pgTable(
   "products",
@@ -48,6 +49,10 @@ export const products = pgTable(
         onDelete: "restrict",
       }),
 
+    brandId: uuid("brand_id").references(() => brands.id, {
+      onDelete: "restrict",
+    }),
+
     image: text("image"),
 
     isActive: boolean("is_active")
@@ -76,6 +81,7 @@ export const products = pgTable(
   },
   (table) => [
     index("products_category_id_idx").on(table.categoryId),
+    index("products_brand_id_idx").on(table.brandId),
     check(
       "products_name_min_length",
       sql`char_length(${table.name}) >= 3`,

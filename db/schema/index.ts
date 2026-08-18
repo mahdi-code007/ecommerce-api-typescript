@@ -5,6 +5,12 @@ export {
 } from "./categories";
 
 export {
+  brands,
+  type Brand,
+  type NewBrand,
+} from "./brands";
+
+export {
   products,
   type Product,
   type NewProduct,
