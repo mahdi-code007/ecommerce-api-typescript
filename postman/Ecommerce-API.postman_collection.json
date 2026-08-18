@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Ecommerce API v1",
-    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart, address, and order requests need the same `{{token}}`. A regular user token is enough; admin is not required except for `/admin/orders`.\n7. Create an address, add a product to the cart, then run `Place Order`.\n8. Try deleting a category before deleting its product to see a `409 Conflict` response.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me`, profile update, password change, cart, addresses, customer orders, and product reviews.\n- Admin: category and product writes, and `/admin/orders`.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Authenticated requests send `Authorization: Bearer {{token}}`.\n- Adding to the cart does not decrease stock. Checkout does.\n- Phone numbers must be Saudi: `05XXXXXXXX` or `+9665XXXXXXXX`.\n- Checkout is cash on delivery only.",
+    "description": "Documentation and testing collection for the ecommerce API.\n\n### How to use\n1. Start the server with `npm run dev`.\n2. Run `Register User`, then promote that email to admin in PostgreSQL:\n\n```sql\nUPDATE users SET role = 'admin' WHERE email = '<the registered email>';\n```\n\n3. Run `Login`; the JWT is saved to `token`.\n4. Run `Create Category`, then `Create Product`.\n5. Guest reads such as `Get All Products` do not need a token.\n6. Cart, address, and order requests need the same `{{token}}`. A regular user token is enough; admin is not required except for `/admin/orders`.\n7. Create an address, add a product to the cart, then run `Place Order`.\n8. Try deleting a category before deleting its product to see a `409 Conflict` response.\n\n### Access\n- Public: register, login, and all catalog GET requests (guest browsing).\n- Authenticated: `GET /auth/me`, profile update, password change, cart, wishlist, favorites, addresses, customer orders, and product reviews.\n- Admin: category and product writes, and `/admin/orders`.\n\n### Notes\n- All requests use `{{baseUrl}}`.\n- Authenticated requests send `Authorization: Bearer {{token}}`.\n- Adding to the cart does not decrease stock. Checkout does.\n- Phone numbers must be Saudi: `05XXXXXXXX` or `+9665XXXXXXXX`.\n- Checkout is cash on delivery only.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -1013,6 +1013,158 @@
               "path": ["api", "v1", "cart"]
             },
             "description": "Removes every item from the current user's cart. The cart row itself is kept."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Wishlist",
+      "description": "Logged-in user only. Save products for later with live prices. Maximum 50 items. Same product may also be in Favorites.",
+      "item": [
+        {
+          "name": "Get Wishlist",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/wishlist",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "wishlist"]
+            },
+            "description": "Lists the current user's wishlist, newest first."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Wishlist Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/wishlist/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "wishlist", "items"]
+            },
+            "description": "Adds an active product. Duplicate: `409`. Inactive or missing: `404`."
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Wishlist Item",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/wishlist/items/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "wishlist", "items", "{{productId}}"]
+            },
+            "description": "Removes the product from the wishlist. Not found: `404`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Favorites",
+      "description": "Logged-in user only. Heart/saved products with live prices. Maximum 50 items. Independent from Wishlist.",
+      "item": [
+        {
+          "name": "Get Favorites",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/favorites",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "favorites"]
+            },
+            "description": "Lists the current user's favorites, newest first."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Favorite Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/favorites/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "favorites", "items"]
+            },
+            "description": "Adds an active product. Duplicate: `409` `Product already in favorites`."
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Favorite Item",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/favorites/items/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "favorites", "items", "{{productId}}"]
+            },
+            "description": "Removes the product from favorites. Not found: `404`."
           },
           "response": []
         }

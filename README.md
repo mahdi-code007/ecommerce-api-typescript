@@ -21,7 +21,7 @@
 
 This repository is the backend foundation for a complete ecommerce platform. It is being built with **Node.js, Express, TypeScript, PostgreSQL, Drizzle, and Zod**, with a focus on clean architecture, reliable validation, secure practices, and maintainable code.
 
-The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, a logged-in shopping cart, multiple shipping addresses with one default, cash-on-delivery checkout, order filtering and reorder, product reviews after delivery, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
+The current version provides JWT authentication, role-based access for catalog writes, guest browsing of the public product catalog, a logged-in shopping cart, wishlist and favorites, multiple shipping addresses with one default, cash-on-delivery checkout, order filtering and reorder, product reviews after delivery, category and product management, search, filtering, sorting, pagination, request validation, centralized error handling, duplicate detection, relationship protection, and automatic slug generation.
 
 > [!NOTE]
 > This is an active learning project. Features are added progressively as I explore backend architecture and full-stack product development.
@@ -58,6 +58,7 @@ flowchart LR
 - Order list filtering by status, newest/oldest sort, and pagination
 - Reorder a previous order back into the cart
 - Product reviews after delivery that update `ratingAverage`
+- Authenticated wishlist and favorites with live product prices (up to 50 items each)
 - Admin-only category and product create, update, and delete
 - Password hashing with bcrypt
 - Role-based authorization (`user` and `admin`)
@@ -280,6 +281,42 @@ Add and update bodies use:
 
 Cart prices are read live from `products`. Item totals and `subtotal` use `priceInMinorUnits`. Missing or inactive products return `404`. Quantity greater than stock returns `400`. An item that does not belong to the current user's cart returns `404`.
 
+### Wishlist
+
+A regular user token is enough. Save products for later with live prices. A user may store up to 50 wishlist items. The same product can also be in favorites.
+
+| Method | Endpoint | Access | Description |
+| :---: | --- | --- | --- |
+| `GET` | `/wishlist` | Authenticated | List the current user's wishlist, newest first |
+| `POST` | `/wishlist/items` | Authenticated | Add a product |
+| `DELETE` | `/wishlist/items/:productId` | Authenticated | Remove a product |
+
+Add body:
+
+```json
+{ "productId": "<uuid>" }
+```
+
+Missing or inactive products return `404`. A duplicate add returns `409`. More than 50 items returns `400`. Removing an item that is not in the list returns `404`. An empty list returns `{ "items": [] }`.
+
+### Favorites
+
+Same rules as wishlist, but stored separately. A product may appear in both lists.
+
+| Method | Endpoint | Access | Description |
+| :---: | --- | --- | --- |
+| `GET` | `/favorites` | Authenticated | List the current user's favorites, newest first |
+| `POST` | `/favorites/items` | Authenticated | Add a product |
+| `DELETE` | `/favorites/items/:productId` | Authenticated | Remove a product |
+
+Add body:
+
+```json
+{ "productId": "<uuid>" }
+```
+
+Duplicate add returns `409` with `Product already in favorites`. Other errors match wishlist behavior.
+
 ### Addresses
 
 A regular user token is enough. A user may save up to 10 shipping addresses. Exactly one of them is `default`. The first address becomes default automatically. `country` is stored as `SA` and is not sent by the client.
@@ -411,6 +448,8 @@ mindmap
       Categories
       Products
       Cart
+      Wishlist
+      Favorites
       Addresses
       Orders
       Reviews
@@ -490,6 +529,10 @@ erDiagram
   USERS ||--o{ ORDERS : places
   USERS ||--o{ REVIEWS : writes
   PRODUCTS ||--o{ REVIEWS : receives
+  USERS ||--o{ WISHLIST_ITEMS : saves
+  USERS ||--o{ FAVORITE_ITEMS : likes
+  PRODUCTS ||--o{ WISHLIST_ITEMS : listed
+  PRODUCTS ||--o{ FAVORITE_ITEMS : listed
   CARTS ||--o{ CART_ITEMS : contains
   PRODUCTS ||--o{ CART_ITEMS : "live price"
   ORDERS ||--o{ ORDER_ITEMS : contains
@@ -558,12 +601,16 @@ flowchart LR
   Guest["Guest"] --> Public["Public reads"]
   User["Logged-in user"] --> Public
   User --> CartAPI["Cart APIs"]
+  User --> WishlistAPI["Wishlist APIs"]
+  User --> FavoritesAPI["Favorites APIs"]
   User --> AddressAPI["Address APIs"]
   User --> OrderAPI["Order APIs"]
   User --> Me["GET /auth/me"]
   User --> Reviews["POST product reviews"]
   Admin["Admin"] --> Public
   Admin --> CartAPI
+  Admin --> WishlistAPI
+  Admin --> FavoritesAPI
   Admin --> AddressAPI
   Admin --> OrderAPI
   Admin --> AdminOrders["Admin order APIs"]
@@ -571,6 +618,8 @@ flowchart LR
 
   Public --> Catalog["GET /categories<br/>GET /products<br/>GET product reviews"]
   CartAPI --> CartTables["carts + cart_items"]
+  WishlistAPI --> WishlistTable["wishlist_items"]
+  FavoritesAPI --> FavoritesTable["favorite_items"]
   AddressAPI --> AddressTable["addresses"]
   OrderAPI --> OrderTables["orders + order_items"]
   AdminOrders --> OrderTables
@@ -595,7 +644,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 - [ ] Brands and subcategories
 - [ ] Product variants and advanced inventory
 - [ ] Product image upload and storage
-- [ ] Wishlist
+- [x] Wishlist
 - [ ] Coupons and promotions
 - [ ] Payment gateway integration
 - [x] Reviews and ratings
@@ -608,7 +657,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 
 ## 🧪 Explore with Postman
 
-Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, Cart, Addresses, Orders, and Reviews requests. Customer examples use `{{token}}` from `Login`. Admin order status updates need an admin token.
+Import [`postman/Ecommerce-API.postman_collection.json`](./postman/Ecommerce-API.postman_collection.json) into Postman to explore Auth, catalog, Cart, Wishlist, Favorites, Addresses, Orders, and Reviews requests. Customer examples use `{{token}}` from `Login`. Admin order status updates need an admin token.
 
 ---
 

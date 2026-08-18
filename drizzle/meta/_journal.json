@@ -50,6 +50,13 @@
       "when": 1787000067764,
       "tag": "0006_peaceful_scourge",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787022190596,
+      "tag": "0007_worried_nightmare",
+      "breakpoints": true
     }
   ]
 }

@@ -58,3 +58,15 @@ export {
   type Review,
   type NewReview,
 } from "./reviews";
+
+export {
+  wishlistItems,
+  type WishlistItem,
+  type NewWishlistItem,
+} from "./wishlistItems";
+
+export {
+  favoriteItems,
+  type FavoriteItem,
+  type NewFavoriteItem,
+} from "./favoriteItems";

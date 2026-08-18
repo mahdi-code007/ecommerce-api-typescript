@@ -10,6 +10,8 @@ import cartRoutes = require("./routes/cartRoutes");
 import addressRoutes = require("./routes/addressRoutes");
 import orderRoutes = require("./routes/orderRoutes");
 import adminOrderRoutes = require("./routes/adminOrderRoutes");
+import wishlistRoutes = require("./routes/wishlistRoutes");
+import favoriteRoutes = require("./routes/favoriteRoutes");
 import AppError = require("./utils/AppError");
 
 interface ApiError extends Error {
@@ -63,6 +65,8 @@ app.use("/api/v1/cart", cartRoutes);
 app.use("/api/v1/addresses", addressRoutes);
 app.use("/api/v1/orders", orderRoutes);
 app.use("/api/v1/admin/orders", adminOrderRoutes);
+app.use("/api/v1/wishlist", wishlistRoutes);
+app.use("/api/v1/favorites", favoriteRoutes);
 
 const notFoundHandler: RequestHandler = (req, _res, next) => {
   next(
