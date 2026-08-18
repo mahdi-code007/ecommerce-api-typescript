@@ -1,3 +1,4 @@
+import cors from "cors";
 import express, {
   type ErrorRequestHandler,
   type RequestHandler,
@@ -54,6 +55,14 @@ const getDuplicatedFieldFromPostgresDetail = (
 };
 
 const app = express();
+
+const corsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:3001";
+
+app.use(
+  cors({
+    origin: corsOrigin,
+  }),
+);
 
 app.use(express.json());
 
