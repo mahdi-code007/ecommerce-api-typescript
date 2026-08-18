@@ -2441,6 +2441,128 @@
       ]
     },
     {
+      "name": "Admin Stats",
+      "description": "Admin JWT required. Dashboard aggregates. Revenue excludes cancelled orders. `GET /admin/products` includes inactive products; public `GET /products` does not.",
+      "item": [
+        {
+          "name": "Get Stats Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/stats/overview?range=30d",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "stats", "overview"],
+              "query": [
+                {
+                  "key": "range",
+                  "value": "30d",
+                  "description": "7d, 30d, or 90d."
+                },
+                {
+                  "key": "timezone",
+                  "value": "Asia/Riyadh",
+                  "description": "IANA timezone. Default Asia/Riyadh."
+                }
+              ]
+            },
+            "description": "Admin only. Returns KPIs, a zero-filled time series, status and payment breakdowns, top products, cities, coupons, and low-stock products. Cancelled orders are excluded from revenue."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Stats Overview Custom Range",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/stats/overview?from=2026-07-19&to=2026-08-18&timezone=Asia/Riyadh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "stats", "overview"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-07-19",
+                  "description": "Inclusive YYYY-MM-DD. Requires to."
+                },
+                {
+                  "key": "to",
+                  "value": "2026-08-18",
+                  "description": "Inclusive YYYY-MM-DD. Requires from."
+                },
+                {
+                  "key": "timezone",
+                  "value": "Asia/Riyadh"
+                }
+              ]
+            },
+            "description": "Custom from/to overrides range. Response `range` is null."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Admin Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/products?page=1&limit=10&sort=newest",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "products"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "sort",
+                  "value": "newest",
+                  "description": "newest, oldest, stock_asc, stock_desc, name_asc."
+                },
+                {
+                  "key": "isActive",
+                  "value": "",
+                  "description": "Optional true or false. Omit to include both.",
+                  "disabled": true
+                },
+                {
+                  "key": "inStock",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Admin only. Lists active and inactive products. Public GET /products still hides inactive products."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Admin Orders",
       "description": "Admin JWT required. Use after promoting the logged-in user and running Login again.",
       "item": [

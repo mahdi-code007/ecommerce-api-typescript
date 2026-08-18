@@ -70,6 +70,24 @@ type FindAllProductsParams = {
   sort: ProductSort;
 };
 
+type AdminProductSort =
+  | "newest"
+  | "oldest"
+  | "stock_asc"
+  | "stock_desc"
+  | "name_asc";
+
+type FindAllAdminProductsParams = {
+  page: number;
+  limit: number;
+  search?: string;
+  isActive?: boolean;
+  inStock?: boolean;
+  categoryId?: string;
+  brandId?: string;
+  sort: AdminProductSort;
+};
+
 type ProductCategorySummary = {
   id: string;
   name: string;
@@ -165,6 +183,21 @@ const getSortColumns = (sort: ProductSort) => {
         desc(products.createdAt),
         desc(products.id),
       ];
+    default:
+      return [desc(products.createdAt), desc(products.id)];
+  }
+};
+
+const getAdminSortColumns = (sort: AdminProductSort) => {
+  switch (sort) {
+    case "oldest":
+      return [asc(products.createdAt), asc(products.id)];
+    case "stock_asc":
+      return [asc(products.stock), asc(products.name), asc(products.id)];
+    case "stock_desc":
+      return [desc(products.stock), asc(products.name), asc(products.id)];
+    case "name_asc":
+      return [asc(products.name), asc(products.id)];
     default:
       return [desc(products.createdAt), desc(products.id)];
   }
@@ -398,6 +431,69 @@ const findAllProducts = async (
   };
 };
 
+const findAllAdminProducts = async (
+  params: FindAllAdminProductsParams,
+): Promise<FindAllProductsResult> => {
+  const db = getPostgresDatabase();
+  const { page, limit, sort, categoryId, brandId } = params;
+  const offset = (page - 1) * limit;
+
+  const categoryIds =
+    categoryId !== undefined
+      ? await categoryRepository.resolveCategoryIdsForFilter(categoryId)
+      : undefined;
+
+  const filters: SQL[] = [];
+
+  if (params.search !== undefined) {
+    filters.push(
+      ilike(products.name, `%${escapeIlikePattern(params.search)}%`),
+    );
+  }
+
+  if (params.isActive !== undefined) {
+    filters.push(eq(products.isActive, params.isActive));
+  }
+
+  if (params.inStock !== undefined) {
+    filters.push(
+      params.inStock ? gt(products.stock, 0) : eq(products.stock, 0),
+    );
+  }
+
+  if (categoryIds !== undefined && categoryIds.length > 0) {
+    filters.push(inArray(products.categoryId, categoryIds));
+  }
+
+  if (brandId !== undefined) {
+    filters.push(eq(products.brandId, brandId));
+  }
+
+  const whereClause = filters.length > 0 ? and(...filters) : undefined;
+
+  const [totalResult] = await db
+    .select({ total: count() })
+    .from(products)
+    .where(whereClause);
+
+  const rows = await db
+    .select(productWithRelationsSelect)
+    .from(products)
+    .innerJoin(categories, eq(products.categoryId, categories.id))
+    .leftJoin(brands, eq(products.brandId, brands.id))
+    .where(whereClause)
+    .orderBy(...getAdminSortColumns(sort))
+    .limit(limit)
+    .offset(offset);
+
+  return {
+    products: await attachCatalogExtras(
+      rows.map((row) => mapProductWithRelations(row)),
+    ),
+    total: totalResult?.total ?? 0,
+  };
+};
+
 const attachCatalogExtras = async (
   catalogProducts: ProductWithCategoryAndBrand[],
 ): Promise<ProductWithCategoryAndBrand[]> => {
@@ -572,6 +668,7 @@ const countProductsByBrandId = async (brandId: string): Promise<number> => {
 export {
   countProductsByBrandId,
   createProduct,
+  findAllAdminProducts,
   findAllProducts,
   findProductById,
   updateProductById,
@@ -580,8 +677,10 @@ export {
 };
 
 export type {
+  AdminProductSort,
   CreateProductInput,
   UpdateProductInput,
+  FindAllAdminProductsParams,
   FindAllProductsParams,
   FindAllProductsResult,
   ProductWithCategoryAndBrand,

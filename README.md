@@ -271,12 +271,14 @@ Products are either `simple` or `variable`. Simple products keep price and stock
 | :---: | --- | --- | --- |
 | `GET` | `/products` | Public | Search, filter, sort, and paginate active products |
 | `GET` | `/products/:id` | Public | Get one active product; includes `images` and, for variable products, `variants` |
+| `GET` | `/admin/products` | Admin | List all products, including inactive |
 | `POST` | `/products` | Admin | Create a simple or variable product |
 | `PATCH` | `/products/:id` | Admin | Update a product (not variant price/stock) |
 | `DELETE` | `/products/:id` | Admin | Delete a product |
 | `POST` | `/products/:id/images` | Admin | Upload a jpeg, png, or webp image |
 | `PATCH` | `/products/:id/images/:imageId` | Admin | Set primary image or change position |
 | `DELETE` | `/products/:id/images/:imageId` | Admin | Delete an uploaded image |
+| `POST` | `/products/:id/variants` | Admin | Add a variant |
 | `PATCH` | `/products/:id/variants/:variantId` | Admin | Update variant price, stock, SKU, or `isActive` |
 | `DELETE` | `/products/:id/variants/:variantId` | Admin | Delete a variant if unused |
 | `GET` | `/products/:id/reviews` | Public | List reviews for a product |
@@ -541,6 +543,31 @@ Admin status body:
 
 Allowed status flow: `pending → confirmed → shipped → delivered`. `pending` can be cancelled by the customer or an admin. `confirmed` can be cancelled by an admin. `shipped` and `delivered` cannot be cancelled. Delivered orders set `paymentStatus` to `paid`.
 
+### Admin stats
+
+Dashboard aggregates run in PostgreSQL. The admin UI should not fetch every order and reduce it in the browser. Money stays in minor units. Revenue, AOV, discounts, top products, cities, and coupons **exclude cancelled** orders. The status donut includes cancelled.
+
+| Method | Endpoint | Access | Description |
+| :---: | --- | --- | --- |
+| `GET` | `/admin/stats/overview` | Admin | KPI cards, time series, breakdowns, and top lists |
+| `GET` | `/admin/products` | Admin | Catalog list including inactive products |
+
+`GET /products` remains the public catalog and still returns only `isActive = true` products. Create, update, and delete stay on `/products`.
+
+Overview query parameters:
+
+| Parameter | Description |
+| --- | --- |
+| `range` | `7d`, `30d` (default), or `90d` |
+| `from` / `to` | Optional `YYYY-MM-DD` pair that overrides `range`. Inclusive calendar days. Max 366 days |
+| `timezone` | IANA timezone, default `Asia/Riyadh` |
+| `lowStockThreshold` | Default `5` |
+| `topLimit` | Default `5`, max `20` |
+
+`range=30d` is the last 30 calendar days including today in that timezone. When `from` and `to` are sent, the response `range` is `null`. `pendingOrdersCount` is the current pending queue, not limited to the date window. Daily buckets are used for windows of 90 days or less; longer windows use ISO weeks (Monday). Missing days are zero-filled. An empty store still returns zeros and empty arrays.
+
+Admin product list query: `page`, `limit`, `search`, `isActive`, `inStock`, `categoryId`, `brandId`, `sort` (`newest`, `oldest`, `stock_asc`, `stock_desc`, `name_asc`). Omit `isActive` to include both active and inactive products.
+
 `GET /orders` and `GET /admin/orders` accept:
 
 | Parameter | Description |
@@ -776,6 +803,7 @@ flowchart LR
   Admin --> OrderAPI
   Admin --> AdminOrders["Admin order APIs"]
   Admin --> AdminCoupons["Admin coupon APIs"]
+  Admin --> AdminStats["Admin stats APIs"]
   Admin --> Writes["Category and product writes"]
 
   Public --> Catalog["GET /categories<br/>GET /products<br/>GET product reviews"]
@@ -787,6 +815,7 @@ flowchart LR
   CouponAPI --> CouponTables["coupons + coupon_usages"]
   AdminCoupons --> CouponTables
   AdminOrders --> OrderTables
+  AdminStats --> OrderTables
   Writes --> CatalogTables["categories + products"]
 ```
 
@@ -817,7 +846,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 - [ ] API documentation
 - [ ] Deployment and continuous integration
 - [ ] Mobile application integration
-- [ ] Admin dashboard integration
+- [x] Admin dashboard integration
 
 ## 🧪 Explore with Postman
 

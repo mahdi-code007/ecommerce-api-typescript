@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  index,
   integer,
   pgTable,
   timestamp,
@@ -62,6 +63,7 @@ export const orderItems = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index("order_items_order_id_idx").on(table.orderId),
     check(
       "order_items_quantity_positive",
       sql`${table.quantity} >= 1`,
