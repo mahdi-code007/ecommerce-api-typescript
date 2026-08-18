@@ -3,11 +3,14 @@ import {
   createProduct,
   createVariant,
   deleteProduct,
+  deleteProductImage,
   deleteVariant,
   getAllProducts,
   getProduct,
   updateProduct,
+  updateProductImage,
   updateVariant,
+  uploadProductImage,
 } from "../controllers/productController";
 import {
   createReview,
@@ -15,12 +18,16 @@ import {
   updateMyReview,
 } from "../controllers/reviewController";
 import { protect, restrictTo } from "../middlewares/auth";
+import { uploadProductImage as uploadProductImageFile } from "../middlewares/uploadProductImage";
 import validate = require("../middlewares/validate");
 import {
+  createProductImageRequestSchema,
   createProductRequestSchema,
   createVariantRequestSchema,
   getProductsRequestSchema,
   productByIdRequestSchema,
+  productImageByIdRequestSchema,
+  updateProductImageRequestSchema,
   updateProductRequestSchema,
   updateVariantRequestSchema,
   variantByIdRequestSchema,
@@ -88,6 +95,31 @@ router.delete(
   restrictTo("admin"),
   validate(variantByIdRequestSchema),
   deleteVariant,
+);
+
+router.post(
+  "/:id/images",
+  protect,
+  restrictTo("admin"),
+  validate(createProductImageRequestSchema),
+  uploadProductImageFile,
+  uploadProductImage,
+);
+
+router.patch(
+  "/:id/images/:imageId",
+  protect,
+  restrictTo("admin"),
+  validate(updateProductImageRequestSchema),
+  updateProductImage,
+);
+
+router.delete(
+  "/:id/images/:imageId",
+  protect,
+  restrictTo("admin"),
+  validate(productImageByIdRequestSchema),
+  deleteProductImage,
 );
 
 router

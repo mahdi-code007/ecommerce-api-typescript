@@ -89,6 +89,12 @@
       "value": "",
       "type": "string",
       "description": "Saved automatically after creating a variable product or adding a variant."
+    },
+    {
+      "key": "productImageId",
+      "value": "",
+      "type": "string",
+      "description": "Saved automatically after a successful Upload Product Image request."
     }
   ],
   "item": [
@@ -846,7 +852,106 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "products", "{{variableProductId}}"]
             },
-            "description": "Public. Returns one product. Variable products include `options` and full `variants` for the product page. List responses set `variants` to `null`."
+            "description": "Public. Returns one product. Variable products include `options` and full `variants` for the product page. Uploaded images appear in `images`. List responses set `variants` and `images` to `null`."
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Product Image",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data?.image?.id) {",
+                  "  pm.collectionVariables.set('productImageId', json.data.image.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": [],
+                  "description": "jpeg, png, or webp. Max 2MB."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/products/{{productId}}/images",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "products", "{{productId}}", "images"]
+            },
+            "description": "Admin only. Upload a product image after creating the product. Field name is `image`. The first upload becomes primary and is stored in `products.image`. A product may have at most 9 images."
+          },
+          "response": []
+        },
+        {
+          "name": "Set Primary Product Image",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isPrimary\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/products/{{productId}}/images/{{productImageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "products", "{{productId}}", "images", "{{productImageId}}"]
+            },
+            "description": "Admin only. Marks this uploaded image as primary. Updates the catalog `image` cache used by list, cart, wishlist, and favorites."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Product Image",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/products/{{productId}}/images/{{productImageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "products", "{{productId}}", "images", "{{productImageId}}"]
+            },
+            "description": "Admin only. Deletes an uploaded image. If it was primary, the next image by position becomes primary. Deleting the last image sets `image` to `null`."
           },
           "response": []
         },

@@ -5,13 +5,17 @@ import type {
 } from "express";
 import * as brandRepository from "../db/repositories/brandRepository";
 import * as categoryRepository from "../db/repositories/categoryRepository";
+import * as productImageRepository from "../db/repositories/productImageRepository";
 import * as productRepository from "../db/repositories/productRepository";
 import * as variantRepository from "../db/repositories/variantRepository";
 import type {
+  CreateProductImageRequest,
   CreateProductRequest,
   CreateVariantRequest,
   GetProductsRequest,
   ProductByIdRequest,
+  ProductImageByIdRequest,
+  UpdateProductImageRequest,
   UpdateProductRequest,
   UpdateVariantRequest,
   VariantByIdRequest,
@@ -85,6 +89,30 @@ const mapVariantWriteError = (
         message: "A product can have at most 100 variants",
         statusCode: 400,
       };
+  }
+};
+
+const mapProductImageWriteError = (
+  reason: Extract<
+    productImageRepository.ProductImageWriteResult,
+    { ok: false }
+  >["reason"],
+): { message: string; statusCode: number } => {
+  switch (reason) {
+    case "not_found":
+      return { message: "Image not found", statusCode: 404 };
+    case "limit_reached":
+      return {
+        message: "A product can have at most 9 images",
+        statusCode: 400,
+      };
+    case "invalid_primary":
+      return {
+        message: "Set another image as primary instead",
+        statusCode: 400,
+      };
+    case "invalid_image_type":
+      return { message: "Image must be jpeg, png, or webp", statusCode: 400 };
   }
 };
 
@@ -182,6 +210,7 @@ export const getProduct = async (
   const { params } = getValidated<ProductByIdRequest>(req);
   const product = await productRepository.findProductById(params.id, {
     includeVariants: true,
+    includeImages: true,
   });
 
   if (!product || !product.isActive) {
@@ -224,6 +253,21 @@ export const updateProduct = async (
       ),
     );
     return;
+  }
+
+  if (body.image !== undefined) {
+    const uploadedCount =
+      await productImageRepository.countImagesByProductId(params.id);
+
+    if (uploadedCount > 0) {
+      next(
+        new AppError(
+          "Upload images via POST /products/:id/images",
+          400,
+        ),
+      );
+      return;
+    }
   }
 
   if (
@@ -361,5 +405,91 @@ export const deleteVariant = async (
   res.status(200).json({
     status: "success",
     message: "Variant deleted successfully",
+  });
+};
+
+// @desc Upload a product image
+// @route POST /api/v1/products/:id/images
+// @access private/admin
+export const uploadProductImage = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const { params } = getValidated<CreateProductImageRequest>(req);
+
+  if (!req.file) {
+    next(new AppError("Image file is required", 400));
+    return;
+  }
+
+  const result = await productImageRepository.addProductImage(params.id, {
+    buffer: req.file.buffer,
+    mimeType: req.file.mimetype,
+  });
+
+  if (!result.ok) {
+    const error = mapProductImageWriteError(result.reason);
+    next(new AppError(error.message, error.statusCode));
+    return;
+  }
+
+  res.status(201).json({
+    status: "success",
+    data: { image: result.image },
+    message: "Image uploaded successfully",
+  });
+};
+
+// @desc Update a product image
+// @route PATCH /api/v1/products/:id/images/:imageId
+// @access private/admin
+export const updateProductImage = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const { params, body } = getValidated<UpdateProductImageRequest>(req);
+  const result = await productImageRepository.updateProductImage(
+    params.id,
+    params.imageId,
+    body,
+  );
+
+  if (!result.ok) {
+    const error = mapProductImageWriteError(result.reason);
+    next(new AppError(error.message, error.statusCode));
+    return;
+  }
+
+  res.status(200).json({
+    status: "success",
+    data: { image: result.image },
+    message: "Image updated successfully",
+  });
+};
+
+// @desc Delete a product image
+// @route DELETE /api/v1/products/:id/images/:imageId
+// @access private/admin
+export const deleteProductImage = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const { params } = getValidated<ProductImageByIdRequest>(req);
+  const result = await productImageRepository.deleteProductImage(
+    params.id,
+    params.imageId,
+  );
+
+  if (!result.ok) {
+    next(new AppError("Image not found", 404));
+    return;
+  }
+
+  res.status(200).json({
+    status: "success",
+    message: "Image deleted successfully",
   });
 };

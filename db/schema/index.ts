@@ -43,6 +43,12 @@ export {
 } from "./productVariantValues";
 
 export {
+  productImages,
+  type ProductImage,
+  type NewProductImage,
+} from "./productImages";
+
+export {
   userRoleEnum,
   users,
   type User,

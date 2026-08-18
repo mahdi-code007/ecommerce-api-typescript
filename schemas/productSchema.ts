@@ -20,6 +20,10 @@ const variantIdSchema = z.uuid({
   error: "Invalid variant id",
 });
 
+const imageIdSchema = z.uuid({
+  error: "Invalid image id",
+});
+
 const nameSchema = z
   .string({
     error: (issue) =>
@@ -327,6 +331,48 @@ const variantByIdRequestSchema = z.object({
   }),
 });
 
+const createProductImageRequestSchema = z.object({
+  params: z.strictObject({
+    id: productIdSchema,
+  }),
+});
+
+const productImageByIdRequestSchema = z.object({
+  params: z.strictObject({
+    id: productIdSchema,
+    imageId: imageIdSchema,
+  }),
+});
+
+const updateProductImageRequestSchema = z.object({
+  params: z.strictObject({
+    id: productIdSchema,
+    imageId: imageIdSchema,
+  }),
+  body: z
+    .strictObject({
+      isPrimary: z
+        .boolean({
+          error: "isPrimary must be a boolean",
+        })
+        .optional(),
+      position: z
+        .number({
+          error: "Position must be a number",
+        })
+        .int({
+          error: "Position must be an integer",
+        })
+        .min(0, {
+          error: "Position cannot be negative",
+        })
+        .optional(),
+    })
+    .refine((data) => Object.keys(data).length > 0, {
+      error: "No fields to update",
+    }),
+});
+
 const updateVariantRequestSchema = z.object({
   params: z.strictObject({
     id: productIdSchema,
@@ -471,22 +517,31 @@ type GetProductsRequest = z.infer<typeof getProductsRequestSchema>;
 type CreateVariantRequest = z.infer<typeof createVariantRequestSchema>;
 type UpdateVariantRequest = z.infer<typeof updateVariantRequestSchema>;
 type VariantByIdRequest = z.infer<typeof variantByIdRequestSchema>;
+type CreateProductImageRequest = z.infer<typeof createProductImageRequestSchema>;
+type UpdateProductImageRequest = z.infer<typeof updateProductImageRequestSchema>;
+type ProductImageByIdRequest = z.infer<typeof productImageByIdRequestSchema>;
 
 export {
+  createProductImageRequestSchema,
   createProductRequestSchema,
   createVariantRequestSchema,
   getProductsRequestSchema,
   productByIdRequestSchema,
+  productImageByIdRequestSchema,
+  updateProductImageRequestSchema,
   updateProductRequestSchema,
   updateVariantRequestSchema,
   variantByIdRequestSchema,
 };
 
 export type {
+  CreateProductImageRequest,
   CreateProductRequest,
   CreateVariantRequest,
   GetProductsRequest,
   ProductByIdRequest,
+  ProductImageByIdRequest,
+  UpdateProductImageRequest,
   UpdateProductRequest,
   UpdateVariantRequest,
   VariantByIdRequest,

@@ -3,6 +3,7 @@ import express, {
   type ErrorRequestHandler,
   type RequestHandler,
 } from "express";
+import path from "node:path";
 import morgan from "morgan";
 import categoryRoutes = require("./routes/categoryRoutes");
 import brandRoutes = require("./routes/brandRoutes");
@@ -82,6 +83,13 @@ app.use("/api/v1/coupons", couponRoutes);
 app.use("/api/v1/admin/coupons", adminCouponRoutes);
 app.use("/api/v1/wishlist", wishlistRoutes);
 app.use("/api/v1/favorites", favoriteRoutes);
+
+const uploadsDirectory = path.resolve(
+  process.cwd(),
+  process.env.UPLOADS_DIR ?? "uploads",
+);
+
+app.use("/uploads", express.static(uploadsDirectory));
 
 const notFoundHandler: RequestHandler = (req, _res, next) => {
   next(

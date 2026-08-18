@@ -12,8 +12,10 @@ import {
   type SQL,
 } from "drizzle-orm";
 import slugify from "slugify";
+import { deleteProductImageDirectory } from "../../utils/localImageStorage";
 import { getPostgresDatabase } from "../../config/postgres";
 import * as categoryRepository from "./categoryRepository";
+import * as productImageRepository from "./productImageRepository";
 import * as variantRepository from "./variantRepository";
 import {
   brands,
@@ -87,6 +89,7 @@ type ProductWithCategoryAndBrand = Product & {
   priceMaxInMinorUnits: number;
   options: variantRepository.OptionSummary[];
   variants: variantRepository.VariantView[] | null;
+  images: productImageRepository.ProductImageView[] | null;
 };
 
 type FindAllProductsResult = {
@@ -128,6 +131,7 @@ const mapProductWithRelations = (
     priceMaxInMinorUnits?: number;
     options?: variantRepository.OptionSummary[];
     variants?: variantRepository.VariantView[] | null;
+    images?: productImageRepository.ProductImageView[] | null;
   },
 ): ProductWithCategoryAndBrand => ({
   ...row.product,
@@ -137,6 +141,7 @@ const mapProductWithRelations = (
     extras?.priceMaxInMinorUnits ?? row.product.priceInMinorUnits,
   options: extras?.options ?? [],
   variants: extras?.variants ?? null,
+  images: extras?.images ?? null,
 });
 
 const getSortColumns = (sort: ProductSort) => {
@@ -217,6 +222,7 @@ const findProductById = async (
   id: string,
   options?: {
     includeVariants?: boolean;
+    includeImages?: boolean;
   },
 ): Promise<ProductWithCategoryAndBrand | null> => {
   const db = getPostgresDatabase();
@@ -233,11 +239,16 @@ const findProductById = async (
     return null;
   }
 
+  const images = options?.includeImages
+    ? await productImageRepository.loadImagesForProduct(id)
+    : null;
+
   if (row.product.productType !== "variable") {
     return mapProductWithRelations(row, {
       priceMaxInMinorUnits: row.product.priceInMinorUnits,
       options: [],
       variants: null,
+      images,
     });
   }
 
@@ -249,6 +260,7 @@ const findProductById = async (
       maxPrices.get(id) ?? row.product.priceInMinorUnits,
     options: details.optionSummaries,
     variants: options?.includeVariants ? details.variants : null,
+    images,
   });
 };
 
@@ -300,6 +312,7 @@ const createProduct = async (
 
     const product = await findProductById(createdId, {
       includeVariants: true,
+      includeImages: true,
     });
 
     if (!product) {
@@ -331,7 +344,9 @@ const createProduct = async (
     throw new Error("Failed to create product");
   }
 
-  const product = await findProductById(created.id);
+  const product = await findProductById(created.id, {
+    includeImages: true,
+  });
 
   if (!product) {
     throw new Error("Failed to load created product");
@@ -402,6 +417,7 @@ const attachCatalogExtras = async (
         priceMaxInMinorUnits: product.priceInMinorUnits,
         options: [],
         variants: null,
+        images: null,
       };
     }
 
@@ -411,6 +427,7 @@ const attachCatalogExtras = async (
         maxPrices.get(product.id) ?? product.priceInMinorUnits,
       options: optionSummaries.get(product.id) ?? [],
       variants: null,
+      images: null,
     };
   });
 };
@@ -474,6 +491,7 @@ const updateProductById = async (
 
   return findProductById(updated.id, {
     includeVariants: true,
+    includeImages: true,
   });
 };
 
@@ -522,6 +540,7 @@ const deleteProductById = async (
   }
 
   await db.delete(products).where(eq(products.id, id));
+  await deleteProductImageDirectory(id);
 
   return { ok: true };
 };

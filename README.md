@@ -147,6 +147,8 @@ The API is available at `http://localhost:3000` by default.
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://ecommerce_user:YOUR_PASSWORD@localhost:5432/ecommerce_db` |
 | `JWT_SECRET` | Secret used to sign access tokens | a long random string |
 | `JWT_EXPIRES_IN` | Access token lifetime | `7d` |
+| `CORS_ORIGIN` | Allowed browser origin | `http://localhost:3001` |
+| `UPLOADS_DIR` | Local directory for uploaded product images | `uploads` |
 
 > [!IMPORTANT]
 > Never commit `config.env` or any file containing real credentials. Use `.env.example` only as a safe configuration template.
@@ -268,11 +270,13 @@ Products are either `simple` or `variable`. Simple products keep price and stock
 | Method | Endpoint | Access | Description |
 | :---: | --- | --- | --- |
 | `GET` | `/products` | Public | Search, filter, sort, and paginate active products |
-| `GET` | `/products/:id` | Public | Get one active product; variable products include `variants` |
+| `GET` | `/products/:id` | Public | Get one active product; includes `images` and, for variable products, `variants` |
 | `POST` | `/products` | Admin | Create a simple or variable product |
 | `PATCH` | `/products/:id` | Admin | Update a product (not variant price/stock) |
 | `DELETE` | `/products/:id` | Admin | Delete a product |
-| `POST` | `/products/:id/variants` | Admin | Add a variant |
+| `POST` | `/products/:id/images` | Admin | Upload a jpeg, png, or webp image |
+| `PATCH` | `/products/:id/images/:imageId` | Admin | Set primary image or change position |
+| `DELETE` | `/products/:id/images/:imageId` | Admin | Delete an uploaded image |
 | `PATCH` | `/products/:id/variants/:variantId` | Admin | Update variant price, stock, SKU, or `isActive` |
 | `DELETE` | `/products/:id/variants/:variantId` | Admin | Delete a variant if unused |
 | `GET` | `/products/:id/reviews` | Public | List reviews for a product |
@@ -337,6 +341,10 @@ Variable create body:
 ```
 
 A variable product may have up to 3 options, 20 values per option, and 100 variants. Deleting a variant that appears on an order returns `409`; deactivate it instead. A variable product must keep at least one variant.
+
+Create the product as JSON first, then upload images with `POST /products/:id/images` as `multipart/form-data` (field name `image`). Allowed types are jpeg, png, and webp. Each file may be at most 2MB. A product may have up to 9 uploaded images. The first upload becomes primary. Files are stored under `uploads/` and served publicly at `/uploads/...`.
+
+List responses set `images` to `null` and keep `image` as the primary URL (uploaded path or optional external URL). `GET /products/:id` returns the gallery. After any upload exists, `PATCH /products/:id` with an `image` URL returns `400`; use the nested image routes instead. Deleting a product also deletes its files from disk.
 
 Product responses populate the related category (`id`, `name`, `slug`, `parentId`) and optional brand (`id`, `name`, `slug`, or `null`). Rating fields are controlled by the server: they change when a customer reviews a product after a delivered order.
 
@@ -799,7 +807,7 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 - [x] User profile management
 - [x] Brands and subcategories
 - [x] Product variants and advanced inventory
-- [ ] Product image upload and storage
+- [x] Product image upload and storage
 - [x] Wishlist
 - [x] Coupons and promotions
 - [ ] Payment gateway integration
