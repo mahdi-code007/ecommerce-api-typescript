@@ -361,6 +361,16 @@ GET /api/v1/orders?status=pending&sort=oldest&page=1&limit=10
 
 `POST /orders/:orderId/reorder` copies products into the cart at live prices. Unavailable or out-of-stock items are listed in `skipped`. If nothing can be added, the API returns `400`. Checkout is still a separate `POST /orders`.
 
+Customer order responses (`GET /orders` and `GET /orders/:orderId`) enrich each item with review context for the logged-in user:
+
+| Field | Meaning |
+| --- | --- |
+| `canReview` | `true` when the order is `delivered` and the user has not reviewed this product yet |
+| `hasReviewed` | `true` when the user already has a review for this product |
+| `review` | The user's review (`id`, `rating`, `comment`, timestamps) or `null` |
+
+Use `canReview` to show a new review button. Use `hasReviewed` and `review` to show the existing rating and an edit action (`PATCH /products/:id/reviews/me`). Admin order responses do not include these fields.
+
 Empty cart returns `400`. An address that is not the current user's returns `404`. Inactive products or quantity above stock return `400` and leave the cart unchanged. Another user's order returns `404`.
 
 ## 🗂️ Project structure

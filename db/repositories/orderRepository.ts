@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 import { getPostgresDatabase } from "../../config/postgres";
 import * as cartRepository from "./cartRepository";
+import * as reviewRepository from "./reviewRepository";
 import {
   cartItems,
   carts,
@@ -44,6 +45,16 @@ type OrderView = {
   items: OrderItemView[];
   createdAt: Date;
   updatedAt: Date;
+};
+
+type CustomerOrderItemView = OrderItemView & {
+  canReview: boolean;
+  hasReviewed: boolean;
+  review: reviewRepository.MyReviewSummary | null;
+};
+
+type CustomerOrderView = Omit<OrderView, "items"> & {
+  items: CustomerOrderItemView[];
 };
 
 class CheckoutUnavailableError extends Error {
@@ -624,6 +635,33 @@ const hasDeliveredProductForUser = async (
   return Boolean(row);
 };
 
+const attachCustomerReviewContext = async (
+  userId: string,
+  orders: OrderView[],
+): Promise<CustomerOrderView[]> => {
+  const productIds = [
+    ...new Set(orders.flatMap((order) => order.items.map((item) => item.productId))),
+  ];
+  const reviewsByProductId =
+    await reviewRepository.findReviewsByUserAndProductIds(userId, productIds);
+
+  return orders.map((order) => ({
+    ...order,
+    items: order.items.map((item) => {
+      const review = reviewsByProductId.get(item.productId) ?? null;
+      const hasReviewed = review !== null;
+      const canReview = order.status === "delivered" && !hasReviewed;
+
+      return {
+        ...item,
+        canReview,
+        hasReviewed,
+        review: review ? reviewRepository.toMyReviewSummary(review) : null,
+      };
+    }),
+  }));
+};
+
 export {
   placeOrder,
   listOrders,
@@ -634,10 +672,13 @@ export {
   updateOrderStatus,
   reorderOrderToCart,
   hasDeliveredProductForUser,
+  attachCustomerReviewContext,
 };
 
 export type {
   OrderView,
+  CustomerOrderView,
+  CustomerOrderItemView,
   PlaceOrderResult,
   CancelOrderResult,
   UpdateStatusResult,

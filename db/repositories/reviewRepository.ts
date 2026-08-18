@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getPostgresDatabase } from "../../config/postgres";
 import {
   products,
@@ -32,6 +32,22 @@ type UpdateReviewInput = {
   rating?: number;
   comment?: string;
 };
+
+type MyReviewSummary = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+const toMyReviewSummary = (review: Review): MyReviewSummary => ({
+  id: review.id,
+  rating: review.rating,
+  comment: review.comment,
+  createdAt: review.createdAt,
+  updatedAt: review.updatedAt,
+});
 
 const mapReviewView = (row: {
   review: Review;
@@ -134,6 +150,29 @@ const findReviewByUserAndProduct = async (
   return review ?? null;
 };
 
+const findReviewsByUserAndProductIds = async (
+  userId: string,
+  productIds: string[],
+): Promise<Map<string, Review>> => {
+  if (productIds.length === 0) {
+    return new Map();
+  }
+
+  const db = getPostgresDatabase();
+  const uniqueProductIds = [...new Set(productIds)];
+  const rows = await db
+    .select()
+    .from(reviews)
+    .where(
+      and(
+        eq(reviews.userId, userId),
+        inArray(reviews.productId, uniqueProductIds),
+      ),
+    );
+
+  return new Map(rows.map((review) => [review.productId, review]));
+};
+
 const createReview = async (
   input: CreateReviewInput,
 ): Promise<ReviewView> => {
@@ -210,12 +249,15 @@ const updateReviewByUserAndProduct = async (
 export {
   listReviewsByProductId,
   findReviewByUserAndProduct,
+  findReviewsByUserAndProductIds,
+  toMyReviewSummary,
   createReview,
   updateReviewByUserAndProduct,
 };
 
 export type {
   ReviewView,
+  MyReviewSummary,
   CreateReviewInput,
   UpdateReviewInput,
 };

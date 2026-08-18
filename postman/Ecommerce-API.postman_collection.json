@@ -1311,7 +1311,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "orders", "{{orderId}}"]
             },
-            "description": "Returns one order owned by the current user. Another user's order returns `404`."
+            "description": "Returns one order owned by the current user. Another user's order returns `404`.\n\nEach item includes `canReview`, `hasReviewed`, and `review` for the logged-in user."
           },
           "response": []
         },

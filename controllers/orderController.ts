@@ -80,12 +80,14 @@ export const getMyOrders = async (
     page,
     limit,
   });
+  const ordersWithReviewContext =
+    await orderRepository.attachCustomerReviewContext(userId, orders);
   const totalPages = Math.ceil(total / limit) || 1;
 
   res.status(200).json({
     status: "success",
-    results: orders.length,
-    data: { orders },
+    results: ordersWithReviewContext.length,
+    data: { orders: ordersWithReviewContext },
     pagination: {
       total,
       totalPages,
@@ -115,9 +117,12 @@ export const getMyOrder = async (
     return;
   }
 
+  const [orderWithReviewContext] =
+    await orderRepository.attachCustomerReviewContext(userId, [order]);
+
   res.status(200).json({
     status: "success",
-    data: { order },
+    data: { order: orderWithReviewContext },
   });
 };
 
