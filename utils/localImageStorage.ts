@@ -1,12 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-
-const MIME_TO_EXTENSION: Record<string, string> = {
-  "image/jpeg": ".jpg",
-  "image/png": ".png",
-  "image/webp": ".webp",
-};
+import { processProductImage } from "./processProductImage";
 
 const getUploadsRoot = (): string =>
   path.resolve(process.cwd(), process.env.UPLOADS_DIR ?? "uploads");
@@ -23,15 +18,10 @@ const assertPathInsideUploads = (absolutePath: string): void => {
 const saveProductImage = async (
   productId: string,
   buffer: Buffer,
-  mimeType: string,
+  _mimeType: string,
 ): Promise<string> => {
-  const extension = MIME_TO_EXTENSION[mimeType];
-
-  if (!extension) {
-    throw new Error("invalid_image_type");
-  }
-
-  const filename = `${randomUUID()}${extension}`;
+  const processed = await processProductImage(buffer);
+  const filename = `${randomUUID()}${processed.extension}`;
   const directory = path.join(getUploadsRoot(), "products", productId);
 
   await fs.mkdir(directory, {
@@ -40,7 +30,7 @@ const saveProductImage = async (
 
   const absolutePath = path.join(directory, filename);
   assertPathInsideUploads(absolutePath);
-  await fs.writeFile(absolutePath, buffer);
+  await fs.writeFile(absolutePath, processed.buffer);
 
   return `/uploads/products/${productId}/${filename}`;
 };
