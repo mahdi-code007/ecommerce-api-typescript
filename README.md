@@ -92,6 +92,8 @@ flowchart LR
 | ORM | Drizzle |
 | Validation | Zod |
 | Auth | JWT + bcrypt |
+| Image upload | Multer (`multipart/form-data`) |
+| Image processing | Sharp (orient, resize, WebP) |
 | Logging | Morgan |
 | Development runner | TSX |
 
@@ -344,9 +346,19 @@ Variable create body:
 
 A variable product may have up to 3 options, 20 values per option, and 100 variants. Deleting a variant that appears on an order returns `409`; deactivate it instead. A variable product must keep at least one variant.
 
-Create the product as JSON first, then upload images with `POST /products/:id/images` as `multipart/form-data` (field name `image`). Allowed types are jpeg, png, and webp. Each file may be at most 2MB. A product may have up to 9 uploaded images. The first upload becomes primary. Files are stored under `uploads/` and served publicly at `/uploads/...`.
+Create the product as JSON first, then upload images with `POST /products/:id/images` as `multipart/form-data` (field name `image`). Allowed upload types are jpeg, png, and webp. Each upload may be at most 2MB before processing. A product may have up to 9 images. The first upload becomes primary. Files are stored under `uploads/` and served publicly at `/uploads/...`.
 
-List responses set `images` to `null` and keep `image` as the primary URL (uploaded path or optional external URL). `GET /products/:id` returns the gallery. After any upload exists, `PATCH /products/:id` with an `image` URL returns `400`; use the nested image routes instead. Deleting a product also deletes its files from disk.
+Before disk write, **Sharp** processes every upload:
+
+| Step | Setting | Why |
+| --- | --- | --- |
+| Auto-orient | `rotate()` from EXIF | Phone photos often look rotated without this |
+| Resize | Longest edge ≤ `1600px`, `fit: inside`, no upscaling | Keeps catalog/detail images bounded |
+| Encode | WebP, quality `80`, effort `4` | Smaller files for mobile/web without heavy CPU on upload |
+
+Stored files are always `.webp` (paths like `/uploads/products/<id>/<uuid>.webp`), even when the client sent jpeg or png. Invalid image bytes (not a real image) return `400` after Sharp fails to decode them.
+
+List responses set `images` to `null` and keep `image` as the primary URL (processed path or optional external URL). `GET /products/:id` returns the gallery. After any upload exists, `PATCH /products/:id` with an `image` URL returns `400`; use the nested image routes instead. Deleting a product also deletes its files from disk.
 
 Product responses populate the related category (`id`, `name`, `slug`, `parentId`) and optional brand (`id`, `name`, `slug`, or `null`). Rating fields are controlled by the server: they change when a customer reviews a product after a delivered order.
 
@@ -837,11 +849,12 @@ Flutter mapping: `Page / Cubit` ≈ controller, `Repository` ≈ `db/repositorie
 - [x] Brands and subcategories
 - [x] Product variants and advanced inventory
 - [x] Product image upload and storage
+- [x] Product image processing with Sharp (orient, resize, WebP)
 - [x] Wishlist
 - [x] Coupons and promotions
 - [ ] Payment gateway integration
 - [x] Reviews and ratings
-- [ ] File and image storage
+- [ ] Cloud file and image storage
 - [ ] Automated testing
 - [ ] API documentation
 - [ ] Deployment and continuous integration
